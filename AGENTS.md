@@ -32,7 +32,7 @@ Don't undo these without asking.
 - The lock code is set in the desktop app, not on the board. A new code from a paired Mac replaces a forgotten one, also while locked.
 - A locked board keeps showing its normal screen, with a lock icon beside Bluetooth and battery, and clocks keep running. The first touch or knob turn only brings up the keypad, and the dial and Settings stay closed. With no input for 10 s, the keypad goes away and clears its digits.
 - The code is entered by touch on a full keypad on every board. The knob doesn't enter digits.
-- While locked, the board makes no sound. Vibration stays on.
+- While locked, the board makes no sound, not even the time's-up alarm. Vibration stays on.
 - The full Pomodoro screen's rim shows the time left out of 60 minutes. Only the arc above an agent is relative to this countdown.
 - The Pomodoro warm-up colors the time, the status and the mic, also before it starts: from 10:00 they fade to Leuchtorange (#FF4D06) at 5:00, then to crimson (#E8143A) at 1:00, interpolated in OKLCH so a fade never sweeps through purple. In the last minute the time pulses with a glow.
 - The project pill is always visible with a clock: on the Timer, on the Pomodoro and in the clock's section above an agent. Agent Zoo with no clock running doesn't show it.
