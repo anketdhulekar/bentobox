@@ -1,0 +1,1539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bento Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --bg: #ECEAE4; --panel: #FFFFFF; --text: #1F1E1D; --muted: #6B6A66; --line: #D9D6CE;
+  --btn: #F4F2EC; --btn-hover: #E9E6DE; --metal: #2B2B2E; --metal-hi: #4A4A4F;
+  --input: #2F6FDB; --output: #B7791F; --mac: #2E8B57;
+  --knob: clamp(240px, 22vw, 320px); --square: clamp(270px, 27vw, 400px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #212120; --text: #ECEAE4; --muted: #A09E98; --line: #373633;
+    --btn: #2C2B29; --btn-hover: #383734; --metal: #3A3A3E; --metal-hi: #5A5A60;
+    --input: #7AA7F5; --output: #E7B45A; --mac: #6CC791;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --panel: #212120; --text: #ECEAE4; --muted: #A09E98; --line: #373633;
+  --btn: #2C2B29; --btn-hover: #383734; --metal: #3A3A3E; --metal-hi: #5A5A60;
+  --input: #7AA7F5; --output: #E7B45A; --mac: #6CC791;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); overflow-x: clip;
+  font: 15px/1.45 Manrope, -apple-system, system-ui, sans-serif; }
+header { padding: 22px 28px 0; }
+h1 { margin: 0; font-size: 22px; font-weight: 700; }
+header p { margin: 2px 0 0; color: var(--muted); max-width: 70ch; }
+main { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 20px; padding: 8px 28px 32px; }
+.stage { flex: 1 1 700px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 12px; min-width: 0; }
+.unit { margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.unit.knob-unit { min-height: calc(var(--square) * 1.56); padding: 0 18px; }
+.unit.square-unit { width: calc(var(--square) * 1.4); min-height: calc(var(--square) * 1.56); }
+figcaption { margin-top: 18px; text-align: center; }
+figcaption b { display: block; font-weight: 700; }
+.spec { color: var(--muted); font-size: 13px; }
+.fb { display: block; height: 20px; font-size: 13px; font-weight: 600; color: var(--output); opacity: 0; transition: opacity .35s; }
+.fb.show { opacity: 1; transition: none; }
+canvas { display: block; touch-action: none; cursor: pointer; background: #000; user-select: none; }
+
+.knob-frame { position: relative; width: calc(var(--knob) * 1.17); height: calc(var(--knob) * 1.17); display: grid; place-items: center; }
+.ring { position: absolute; inset: 0; border-radius: 50%; cursor: grab; touch-action: none;
+  background: repeating-conic-gradient(var(--metal) 0 3deg, var(--metal-hi) 3deg 6deg); box-shadow: 0 8px 24px rgb(0 0 0 / 28%); }
+.ring.dragging { cursor: grabbing; }
+.ring::after { content: ""; position: absolute; left: 50%; top: 3px; width: 4px; height: 10px; margin-left: -2px; border-radius: 2px; background: #fff; opacity: .75; }
+#cv-knob { position: relative; width: var(--knob); height: var(--knob); border-radius: 50%; box-shadow: 0 0 0 3px #000; }
+
+.square-frame { position: relative; width: calc(var(--square) * 1.08); height: calc(var(--square) * 1.08); padding: calc(var(--square) * .04);
+  border-radius: calc(var(--square) * .12); background: #0B0B0C; box-shadow: 0 8px 24px rgb(0 0 0 / 30%); will-change: transform; }
+#cv-square { width: var(--square); height: var(--square); border-radius: calc(var(--square) * .085); }
+.side { position: absolute; left: 100%; width: 7px; padding: 0; border: 0; border-radius: 0 4px 4px 0; background: var(--metal-hi); cursor: pointer; }
+.side:hover, .side:focus-visible { background: var(--output); outline: none; }
+.side[data-btn="PWR"] { top: 14%; height: 15%; }
+.side[data-btn="User"] { top: 40%; height: 11%; }
+.side[data-btn="BOOT"] { top: 54%; height: 11%; }
+
+.panel { flex: 0 1 340px; min-width: 280px; display: grid; gap: 12px; margin-inline: auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.card h2 { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
+.card p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+.btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.btns.two { grid-template-columns: repeat(2, 1fr); }
+.btns.four { grid-template-columns: repeat(4, 1fr); }
+button.b { min-height: 34px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--btn); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+button.b:hover { background: var(--btn-hover); }
+button.b:focus-visible, input:focus-visible { outline: 2px solid var(--input); outline-offset: 1px; }
+.row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 10px; }
+.row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--input); }
+.row output { width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+label.row { cursor: pointer; }
+.row .code { width: 66px; min-height: 34px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--btn); color: var(--text); font: inherit; font-weight: 600; letter-spacing: .12em; }
+.card p.note { margin: 8px 0 0; min-height: 18px; }
+kbd { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 12px; }
+ol.log { list-style: none; margin: 0; padding: 0; min-height: 168px; font-size: 12px; display: grid; align-content: start; gap: 3px; }
+.log li { display: grid; grid-template-columns: 62px 1fr; gap: 6px; }
+.log .k { font-weight: 700; }
+.log .input .k { color: var(--input); }
+.log .output .k { color: var(--output); }
+.log .mac .k { color: var(--mac); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 760px) {
+  header, main { padding-inline: 16px; }
+  :root { --knob: min(250px, 66vw); --square: min(270px, 62vw); }
+  .unit.knob-unit, .unit.square-unit { min-height: 0; width: auto; padding: 22px 0; }
+  .unit.square-unit { min-height: calc(var(--square) * 1.5); }
+  .panel { flex-basis: 100%; }
+}
+@media (min-width: 761px) { .stage { position: sticky; top: 6px; } } /* the boards stay in view beside a tall panel */
+@media (prefers-reduced-motion: reduce) { .fb { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bento</h1>
+  <p>One UX on two boards. Both screens below share the same state, so anything you do on one shows on the other in that board's layout. Agents and tasks are made up.</p>
+</header>
+<main>
+  <section class="stage" aria-label="The two boards">
+    <figure class="unit knob-unit">
+      <div class="knob-frame">
+        <div class="ring" id="ring" title="Drag to turn the knob"></div>
+        <canvas id="cv-knob" width="720" height="720" tabindex="0" aria-label="Knob screen"></canvas>
+      </div>
+      <figcaption><b>Knob</b><span class="spec">360 × 360 round LCD, knob, vibration, mic</span><span class="fb" id="fb-knob"></span></figcaption>
+    </figure>
+    <figure class="unit square-unit">
+      <div class="square-frame" id="square">
+        <canvas id="cv-square" width="960" height="960" tabindex="0" aria-label="Square board screen"></canvas>
+        <button class="side" data-btn="PWR" title="PWR: Settings" aria-label="PWR button: Settings"></button>
+        <button class="side" data-btn="User" title="User: volume up" aria-label="User button: volume up"></button>
+        <button class="side" data-btn="BOOT" title="BOOT: volume down" aria-label="BOOT button: volume down"></button>
+      </div>
+      <figcaption><b>Square board</b><span class="spec">480 × 480 AMOLED, buttons, speaker, mics, motion sensor</span><span class="fb" id="fb-square"></span></figcaption>
+    </figure>
+  </section>
+
+  <aside class="panel">
+    <section class="card">
+      <h2>Try it</h2>
+      <p>Drag on either screen to swipe, and hold to reset. Turn the knob by dragging its ring or scrolling over it. These buttons act on the knob.</p>
+      <div class="btns">
+        <button class="b" data-act="turn-1">Turn left</button>
+        <button class="b" data-act="tap">Tap</button>
+        <button class="b" data-act="turn1">Turn right</button>
+        <button class="b" data-act="left">Swipe left</button>
+        <button class="b" data-act="up">Swipe up</button>
+        <button class="b" data-act="right">Swipe right</button>
+        <button class="b" data-act="hold">Hold</button>
+        <button class="b" data-act="down">Swipe down</button>
+        <button class="b" data-act="skip">Skip 5 min</button>
+      </div>
+      <p style="margin:10px 0 0">Keys: <kbd>←</kbd> <kbd>→</kbd> turn, <kbd>↑</kbd> <kbd>↓</kbd> swipe, <kbd>Space</kbd> tap, <kbd>H</kbd> hold.</p>
+    </section>
+    <section class="card">
+      <h2>Rotate the square board</h2>
+      <div class="btns four">
+        <button class="b" data-tilt="0">0°</button>
+        <button class="b" data-tilt="90">90°</button>
+        <button class="b" data-tilt="180">180°</button>
+        <button class="b" data-tilt="270">270°</button>
+      </div>
+      <div class="row"><label for="tilt">Angle</label><input id="tilt" type="range" min="0" max="359" value="0"><output id="tilt-out">0°</output></div>
+      <label class="row"><input id="flat" type="checkbox"> Lying flat, so gravity gives no direction</label>
+    </section>
+    <section class="card">
+      <h2>Situations</h2>
+      <div class="btns two"><button class="b" id="needs">Agent needs you</button><button class="b" id="answer">Answer it</button></div>
+      <label class="row"><input id="mac" type="checkbox" checked> Mac connected</label>
+      <div class="row"><label for="batt">Battery</label><input id="batt" type="range" min="0" max="100" value="82"><output id="batt-out">82%</output></div>
+      <label class="row"><input id="charging" type="checkbox"> Charging</label>
+    </section>
+    <section class="card">
+      <h2>Pomodoro time left</h2>
+      <p>Jump to where its color changes. This starts the Pomodoro if it isn't running.</p>
+      <div class="btns">
+        <button class="b" data-left="10">10:00</button>
+        <button class="b" data-left="5">5:00</button>
+        <button class="b" data-left="1">1:00</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Desktop app: lock code</h2>
+      <p>The code is set on the Mac. This sample lets you try Lock right away.</p>
+      <div class="row">
+        <label for="code">Code</label>
+        <input id="code" class="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off" value="1234">
+        <button class="b" id="code-save">Save</button>
+        <button class="b" id="code-clear">Remove</button>
+      </div>
+      <p class="note" id="code-msg" aria-live="polite"></p>
+    </section>
+    <section class="card">
+      <h2>What moves between the layers</h2>
+      <ol class="log" id="log" aria-live="off"></ol>
+    </section>
+  </aside>
+</main>
+<div class="sr" id="live" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const mod = (v, n) => ((v % n) + n) % n;
+  const FONT = "Manrope, -apple-system, system-ui, sans-serif";
+  const CLAUDE = "#D97757", CLAUDE_SICK = "#A47E73", EYE = "#141414";
+
+  // ================= Characters (copied from the Agent Zoo preview) =================
+  // The Claude Code mascot: 18 x 10 mascot pixels (square). Torso x 3..14, y 0..7; eyes at x 5 and 12, y 2..3;
+  // arms x 1..2 and 15..16, y 4..5; legs at x 4, 6, 11, 13, y 8..9. (In the terminal each pixel is a half block,
+  // which is why the eyes and legs are tall slots.)
+  const PAL = { K: "#1d1d1f", k: "#55555a", R: "#E5484D", V: "#B91C1C", Y: "#F2C14E", y: "#B7791F", W: "#FFFFFF", w: "#D4D4D4",
+    G: "#2BA36B", g: "#1E7A4F", B: "#3B82F6", L: "#22C55E", N: "#3D4DB7", n: "#2E3A94", F: "#FDE047", P: "#7C5CFF", p: "#5B45D6",
+    M: "#E86FA6", m: "#F9A8D4", C: "#22D3EE", c: "#06B6D4", Q: "#F472B6", T: "#14B8A6", t: "#0F9488", O: "#8B5A2B", o: "#A0692F",
+    D: "#5C3A1A", S: "#9CA3AF", E: "#7BD88F", e: "#3FA65A", H: "#2E7D46" };
+  function cells(rows, x0, y0) {
+    const out = [];
+    rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] !== ".") out.push([x0 + i, y0 + j, PAL[r[i]]]); });
+    return out;
+  }
+  const TORSO = []; for (let y = 0; y < 8; y++) for (let x = 3; x <= 14; x++) TORSO.push([x, y]);
+  const ARM_L = [[1, 4], [2, 4], [1, 5], [2, 5]], ARM_R = [[15, 4], [16, 4], [15, 5], [16, 5]];
+  const LEG_A = [4, 11], LEG_B = [6, 13];
+
+  const HATS = {
+    top: cells([".KKKKKKKK.", ".KKKKKKKK.", ".KKKKKKKK.", ".RRRRRRRR.", "KKKKKKKKKK"], 4, -5),
+    party: cells(["..YY..", "..PP..", ".PYPP.", ".PPCP.", "PPPPYP", "PCPPPP"], 6, -6),
+    crown: cells(["Y...YY...Y", "YY.YYYY.YY", "YYYYYYYYYY", "YRYYBBYYRY"], 4, -4),
+    chef: cells(["..WW..WW..", ".WWWWWWWW.", "WWWWWWWWWW", "WWWWWWWWWW", ".wwwwwwww.", ".WWWWWWWW."], 4, -6),
+    wizard: cells(["......N.....", ".....NN.....", ".....NFN....", "....NNNN....", "....NNNFN...", "...NNNNNN...", "...NNNNNNN..", "nnnnnnnnnnnn"], 3, -8),
+    cowboy: cells([".....oooo.....", "....oooooo....", "O...DDDDDD...O", "OOOOOOOOOOOOOO"], 2, -4),
+    beanie: cells(["....WW....", "..GGGGGG..", ".GGGGGGGG.", "GGGGGGGGGG", "gggggggggg"], 4, -5),
+    propeller: cells(["....kk....", "..RRFFRR..", ".RRRFFRRR.", "RRRRFFRRRR", "RRRRRRRRRR"], 4, -5),
+    sprout: cells(["..EE..EE..", ".EEEe.eEE.", "..EEEeEE..", "....HH....", "....H....."], 4, -5),
+  };
+  const PROP = ["BBBBkkLLLL", ".BBBkkLLL.", "..BBkkLL..", ".BBBkkLLL."].map((r) => cells([r], 4, -6));
+  const HAT_KEYS = Object.keys(HATS);
+  const CAPE_BACK = cells(["V............V", "VV..........VV", "VV..........VV", "VV..........VV", "VVV........VVV",
+    "VVV........VVV", "VVVVVVVVVVVVVV", "VVVVVVVVVVVVVV", "VVVVVVVVVVVVVV"], 2, 1);
+  const OUTFITS = {
+    dress: cells(["MMWMMMMMMWMM", "MMMMMMMMMMMM"], 3, 5).concat(cells(["MMMMMMWMMMMMMM"], 2, 7)),
+    tutu: cells(["mMmMmMmMmMmMmMmM"], 1, 6).concat(cells(["MmMmMmMmMmMmMm"], 2, 7)),
+    cape: cells(["Y..........Y"], 3, 1),
+    bowtie: cells(["PPppPP", "P.pp.P"], 6, 5),
+    scarf: cells(["TTTTTTTTTTTT"], 3, 4).concat(cells(["tt", "tt", "tt"], 12, 5)),
+    hero: cells(["BFFB", "BFFB", ".BB."], 7, 4),
+    hawaii: cells(["ccFccccQcccc", "ccccQccccFcc", "cQccccFccccc", "cccccccccQcc"], 3, 4),
+    none: [],
+  };
+  const OUTFIT_KEYS = Object.keys(OUTFITS);
+  const ACCS = {
+    shades: cells(["KKKkkkkKKK", "KKK....KKK"], 4, 2),
+    moustache: cells([".DDDDDD.", "D......D"], 5, 4),
+    headphones: cells(["kkkkkkkkkkkk"], 3, -1).concat(cells(["RR............RR", "RR............RR", "RR............RR"], 1, 1)),
+    monocle: cells(["YYY", "Y.Y", "Y.Y", "YYY"], 11, 1).concat(cells(["y"], 14, 5), cells(["y"], 15, 6)),
+    balloon: cells([".RRR.", "RRRRR", "RRWRR", "RRRRR", ".RRR.", "..R.."], 17, -9)
+      .concat(cells(["S"], 19, -3), cells(["S"], 18, -2), cells(["S"], 18, -1), cells(["S"], 18, 0), cells(["S"], 17, 1), cells(["S"], 17, 2), cells(["S"], 17, 3)),
+    coffee: cells(["S.S", ".S."], 17, 1).concat(cells(["OOOO", "WWWWW", "WWWW", "WWWW"], 17, 3)),
+    none: [],
+  };
+  const ACC_KEYS = Object.keys(ACCS);
+
+  // Emote icons (5 x 5) for the speech bubble.
+  const ICONS = {
+    bang: ["..#..", "..#..", "..#..", ".....", "..#.."], question: [".###.", "...#.", "..#..", ".....", "..#.."],
+    bash: ["#....", ".#...", "#....", ".....", "..###"], edit: ["...##", "..###", ".###.", "###..", "#...."],
+    read: ["####.", "#..##", "#...#", "#...#", "#####"], search: [".##..", "#..#.", "#..#.", ".###.", "....#"],
+    web: [".###.", "#.#.#", "#####", "#.#.#", ".###."], think: [".....", ".....", "#.#.#", ".....", "....."],
+    sub: ["..#..", "..#..", "#####", "..#..", "..#.."], check: [".....", "....#", "...#.", "#.#..", ".#..."],
+    arrow: ["..#..", "...#.", "#####", "...#.", "..#.."], x: ["#...#", ".#.#.", "..#..", ".#.#.", "#...#"],
+  };
+
+  // ---- The Codex character, option 2: a blue slime (our own pixel art, in a cute style) ----
+  // A dome with a dark outline, a shine, sparkly eyes, rosy cheeks, a small smile and little hands. It spans x 2..15,
+  // y 0..9 (its top at y 0, like the mascot's), so the hats sit on it the same way. No legs: it hops and squishes.
+  const SLIME_HALF = [2.6, 4.6, 5.6, 6.2, 6.6, 6.9, 7.0, 7.0, 7.0, 6.6];
+  const SLIME_CELLS = [];
+  for (let y = 0; y < 10; y++) for (let x = 0; x < 18; x++) if (Math.abs(x + 0.5 - 9) <= SLIME_HALF[y]) SLIME_CELLS.push([x, y]);
+  const SLIME_SET = new Set(SLIME_CELLS.map(([x, y]) => `${x},${y}`));
+  const SLIME_EDGE = SLIME_CELLS.map(([x, y]) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !SLIME_SET.has(`${x + dx},${y + dy}`)));
+  const SLIME_COL = { out: "#24358F", fill: "#5B8CFF", light: "#86AAFF", shade: "#4673E8", shine: "#F2F6FF" };
+  const SLIME_SICK = { out: "#4A4F66", fill: "#9097B0", light: "#ADB3C8", shade: "#7D849D", shine: "#E6E8EE" };
+  const SLIME_FACES = {
+    open: { eyes: [[5, 4], [6, 4], [5, 5], [6, 5], [5, 6], [6, 6], [11, 4], [12, 4], [11, 5], [12, 5], [11, 6], [12, 6]], spark: [[6, 4], [12, 4]], mouth: [[8, 7], [9, 7]] },
+    wide: { eyes: [[4, 3], [5, 3], [6, 3], [4, 4], [5, 4], [6, 4], [4, 5], [5, 5], [6, 5], [4, 6], [5, 6], [6, 6], [11, 3], [12, 3], [13, 3], [11, 4], [12, 4], [13, 4], [11, 5], [12, 5], [13, 5], [11, 6], [12, 6], [13, 6]],
+      spark: [[6, 3], [5, 4], [13, 3], [12, 4]], mouth: [[8, 7], [9, 7], [8, 8], [9, 8]] },
+    happy: { eyes: [[4, 5], [5, 4], [6, 4], [7, 5], [10, 5], [11, 4], [12, 4], [13, 5]], spark: [], mouth: [[7, 7], [8, 8], [9, 8], [10, 7]] },
+    closed: { eyes: [[4, 5], [5, 6], [6, 6], [7, 5], [10, 5], [11, 6], [12, 6], [13, 5]], spark: [], mouth: [[8, 7], [9, 7]] },
+    x: { eyes: [[4, 4], [6, 4], [5, 5], [4, 6], [6, 6], [11, 4], [13, 4], [12, 5], [11, 6], [13, 6]], spark: [], mouth: [[8, 8], [9, 7], [10, 8]] },
+  };
+  function drawSlime(ctx, look, p, ax, ay, sc) {
+    const X = (u) => ax + (u - 9) * sc * p.sx, Y = (v) => ay - (10 - v) * sc * p.sy;
+    function put(u, v, col) {
+      const x1 = Math.round(X(u)), x2 = Math.round(X(u + 1)), y1 = Math.round(Y(v)), y2 = Math.round(Y(v + 1));
+      if (x2 <= x1 || y2 <= y1) return;
+      ctx.fillStyle = col; ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+    }
+    ctx.globalAlpha = p.alpha;
+    const sick = p.bodyCol === CLAUDE_SICK, C = sick ? SLIME_SICK : SLIME_COL;
+    SLIME_CELLS.forEach(([x, y], i) => put(x, y, SLIME_EDGE[i] ? C.out : y >= 8 ? C.shade : y <= 3 && x <= 8 ? C.light : C.fill));
+    for (const [x, y] of [[5, 2], [6, 2], [4, 3]]) put(x, y, C.shine);
+    // Little hands: down at rows 7..8; up as the arms go up (and a small paddle while it works).
+    for (const [x0, arm, step] of [[0, p.armL, p.legA], [16, p.armR, p.legB]]) {
+      const hy = 7 + arm * 2 - (step ? 1 : 0);
+      put(x0, hy, x0 === 0 ? C.out : C.fill); put(x0 + 1, hy, x0 === 0 ? C.fill : C.out);
+      put(x0, hy + 1, C.out); put(x0 + 1, hy + 1, C.out);
+    }
+    const f = SLIME_FACES[p.eyes] || SLIME_FACES.open, g = p.eyes === "open" ? p.look : 0;
+    for (const [u, v] of f.eyes) put(u + g, v, "#121933");
+    for (const [u, v] of f.spark) put(u + g, v, "#FFFFFF");
+    for (const [u, v] of f.mouth) put(u + g, v, "#1B2452");
+    if (!sick) for (const [u, v] of [[3, 7], [4, 7], [13, 7], [14, 7]]) put(u, v, "#FF9EC8");
+  }
+
+  // ---- The Grok character: a white ball with tall glossy pill eyes (pixel art after the Grok Bot mascot) ----
+  // A 12 x 12 ball (x 3..14, y -2..9) lit from the upper right: a crescent of shadow at the lower left, a small
+  // highlight up and to the right. Its eyes sit a little to the right, as if it looks to the side. No hands and no
+  // legs: it bounces while it works, and its eyes show the state. Its hat sits one row higher than on the mascot.
+  const ballIn = (x, y) => { const dx = x + 0.5 - 9, dy = y + 0.5 - 4; return x >= 3 && x <= 14 && y >= -2 && y <= 9 && dx * dx + dy * dy <= 37; };
+  const BALL_CELLS = [];
+  for (let y = -2; y <= 9; y++) for (let x = 3; x <= 14; x++) if (ballIn(x, y)) BALL_CELLS.push([x, y]);
+  const BALL_TONES = ["#FFFFFF", "#F0EEEA", "#D2CEC7", "#A9A49D"], BALL_SICK = ["#D9D7D2", "#BDBAB4", "#9E9B96", "#7C7975"];
+  const away = (x, y, cx, cy, r) => (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 > r * r;
+  const BALL_SHADE = BALL_CELLS.map(([x, y]) => away(x, y, 10, 3, 6.2) ? 3 : away(x, y, 10.8, 2.2, 7.4) ? 2 : (x + 0.5 - 11.2) ** 2 + (y + 0.5 - 0.8) ** 2 < 2.6 ? 0 : 1);
+  const pill = (x0, top, h) => { const c = []; for (let v = top; v < top + h; v++) c.push([x0, v], [x0 + 1, v]); return c; };
+  const roundEye = (a) => { const c = []; for (let v = 1; v <= 5; v++) for (let u = 0; u < 3; u++) if (!((v === 1 || v === 5) && u !== 1)) c.push([a + u, v]); return c; };
+  const arc = (a) => [[a + 1, 3], [a + 2, 3], [a, 4], [a + 3, 4]];
+  const xEye = (a) => [[a, 2], [a + 2, 2], [a + 1, 3], [a, 4], [a + 2, 4]];
+  const BALL_FACES = { // eyes, and their gloss; the pills sit at x 7..8 and 11..12
+    open: { eyes: pill(7, 2, 4).concat(pill(11, 2, 4)), gloss: [[7, 2], [11, 2]] },
+    wide: { eyes: roundEye(6).concat(roundEye(11)), gloss: [[6, 2], [7, 2], [11, 2], [12, 2]] },
+    happy: { eyes: arc(5).concat(arc(11)), gloss: [] },
+    closed: { eyes: [[7, 4], [8, 4], [11, 4], [12, 4]], gloss: [] },
+    x: { eyes: xEye(6).concat(xEye(11)), gloss: [] },
+  };
+  // Returns the hat's lift (in grid rows, negative = up).
+  function drawBall(ctx, look, p, ax, ay, sc) {
+    const X = (u) => ax + (u - 9) * sc * p.sx, Y = (v) => ay - (10 - v) * sc * p.sy;
+    function put(u, v, col) {
+      const x1 = Math.round(X(u)), x2 = Math.round(X(u + 1)), y1 = Math.round(Y(v)), y2 = Math.round(Y(v + 1));
+      if (x2 <= x1 || y2 <= y1) return;
+      ctx.fillStyle = col; ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+    }
+    ctx.globalAlpha = p.alpha;
+    const T = p.bodyCol === CLAUDE_SICK ? BALL_SICK : BALL_TONES;
+    BALL_CELLS.forEach(([x, y], i) => put(x, y, T[BALL_SHADE[i]]));
+    const f = BALL_FACES[p.eyes] || BALL_FACES.open, g = p.eyes === "open" ? p.look : 0;
+    for (const [u, v] of f.eyes) if (ballIn(u + g, v)) put(u + g, v, "#0B0B0D");
+    for (const [u, v] of f.gloss) put(u + g, v, "#6E6E76");
+    return -1;
+  }
+
+  // ---- Drawing one mascot ----
+  // pose: sx, sy (squash), alpha, bodyCol, eyes (open|closed|happy|wide|x), look (-1..1), armL/armR (0 down, -1, -2 up),
+  // legA/legB (lifted), hatDy, prop (frame), flutter, t (seconds)
+  function drawMascot(ctx, look, p, ax, ay, sc) {
+    const X = (u) => ax + (u - 9) * sc * p.sx, Y = (v) => ay - (10 - v) * sc * p.sy;
+    function put(u, v, col) {
+      const x1 = Math.round(X(u)), x2 = Math.round(X(u + 1)), y1 = Math.round(Y(v)), y2 = Math.round(Y(v + 1));
+      if (x2 <= x1 || y2 <= y1) return;
+      ctx.fillStyle = col; ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+    }
+    if (look.kind === "codex" || look.kind === "grok") { // Codex: the slime or the cloud head (hat one row higher); Grok: the ball (the same)
+      let lift = 0;
+      if (look.kind === "grok") lift = drawBall(ctx, look, p, ax, ay, sc);
+      else drawSlime(ctx, look, p, ax, ay, sc);
+      if (look.hat) {
+        for (const [u, v, col] of HATS[look.hat]) put(u, v + lift + p.hatDy, col);
+        if (look.hat === "propeller") for (const [u, v, col] of PROP[p.prop]) put(u, v + lift + p.hatDy, col);
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+    ctx.globalAlpha = p.alpha;
+    if (look.outfit === "cape") for (const [u, v, col] of CAPE_BACK) put(u + (v >= 5 ? Math.sin(p.t * 9 + v * 0.9) * 0.45 * p.flutter : 0), v, col);
+    const body = p.bodyCol;
+    for (const lx of LEG_A) { put(lx, 8, body); if (!p.legA) put(lx, 9, body); }
+    for (const lx of LEG_B) { put(lx, 8, body); if (!p.legB) put(lx, 9, body); }
+    for (const [u, v] of TORSO) put(u, v, body);
+    for (const [u, v] of ARM_L) put(u, v + p.armL, body);
+    for (const [u, v] of ARM_R) put(u, v + p.armR, body);
+    for (const [u, v, col] of OUTFITS[look.outfit]) put(u, v, col);
+    for (const ex of [5 + p.look, 12 + p.look]) {
+      if (p.eyes === "x") { put(ex, 2, "#E5484D"); put(ex, 3, "#E5484D"); }
+      else if (p.eyes === "closed") put(ex, 3, EYE);
+      else if (p.eyes === "happy") put(ex, 2, EYE);
+      else if (p.eyes === "wide") { put(ex, 1, EYE); put(ex, 2, EYE); put(ex, 3, EYE); }
+      else { put(ex, 2, EYE); put(ex, 3, EYE); }
+    }
+    const sway = Math.sin(p.t * 1.7) * 0.5;
+    for (const [u, v, col] of ACCS[look.acc]) put(u + (look.acc === "balloon" && v < 4 ? sway * clamp((4 - v) / 8, 0, 1) : 0), v + (look.acc === "balloon" && v < 4 ? p.armR * 0.5 : 0), col);
+    if (look.hat) {
+      for (const [u, v, col] of HATS[look.hat]) put(u, v + p.hatDy, col);
+      if (look.hat === "propeller") for (const [u, v, col] of PROP[p.prop]) put(u, v + p.hatDy, col);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawBubble(ctx, x, y, icon, fill, ink, scale, alpha) { // x, y = the tip of the tail (the bubble sits up and to the left)
+    const P = 3;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(Math.round(x), Math.round(y)); ctx.scale(scale, scale);
+    ctx.fillStyle = fill;
+    const ox = -8 * P, oy = -11 * P;
+    for (let j = 0; j < 9; j++) for (let i = 0; i < 9; i++) {
+      if ((i === 0 || i === 8) && (j === 0 || j === 8)) continue;
+      ctx.fillRect(ox + i * P, oy + j * P, P, P);
+    }
+    ctx.fillRect(ox + 6 * P, oy + 9 * P, 2 * P, P); ctx.fillRect(ox + 7 * P, oy + 10 * P, P, P);
+    ctx.fillStyle = ink;
+    ICONS[icon].forEach((r, j) => { for (let i = 0; i < 5; i++) if (r[i] === "#") ctx.fillRect(ox + (2 + i) * P, oy + (2 + j) * P, P, P); });
+    ctx.restore();
+  }
+  function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function costumeFor(id, agent = "claude") {
+    const h = hash(id);
+    if (agent === "codex" || agent === "grok") return { kind: agent, hat: HAT_KEYS[h % HAT_KEYS.length], outfit: "none", acc: "none" };
+    return { kind: "claude", hat: HAT_KEYS[h % HAT_KEYS.length], outfit: OUTFIT_KEYS[(h >>> 8) % OUTFIT_KEYS.length], acc: ACC_KEYS[(h >>> 16) % ACC_KEYS.length] };
+  }
+
+  // ================= Boards: what each one is and can do =================
+  // The UX reads only this table. A new board with a round or square screen is one more entry.
+  const BOARDS = {
+    knob: { id: "knob", w: 360, h: 360, shape: "round", panel: "lcd",
+      caps: { knob: true, haptics: true, mic: true, speaker: false, motion: false, battery: true } },
+    square: { id: "square", w: 480, h: 480, shape: "square", panel: "amoled",
+      caps: { knob: false, haptics: false, mic: true, speaker: true, motion: true, battery: true } },
+  };
+
+  // One layout per screen shape.
+  const LAYOUTS = {
+    round: { base: 360,
+      rim: { inset: 12.5, width: 25, radius: 0 },
+      clock: { pillY: 64, pill: 15, taskY: 123, task: 28, taskW: 250, timeY: 212, time: 88, timeLong: 62, statusY: 238, status: 14, micY: 282, micR: 23 },
+      // The top arc: about a third of the height.
+      arch: { bottom: 122, inset: 5, width: 10, radius: 0, pillY: 36, pill: 12.5, pillW: 150, timeY: 92, time: 48, timeLong: 36, taskY: 111, task: 12, taskW: 210 },
+      zoo: { feet: 192, sc: 7, nameY: 234, name: 24, actY: 262, act: 17, lineY: 286, line: 13, textW: 250, topY: 40, top: 13 },
+      dotsRim: { inset: 33 },
+      // Bluetooth and battery, together at six o'clock. [x, y, set into the rim]
+      status: { h: 10, clock: [180, 347.5, true], arc: [180, 346], zoo: [180, 346], list: [180, 346] },
+      zooClock: { feet: 232, sc: 6, nameY: 262, name: 20, actY: 285, act: 15, lineY: 305, line: 12, textW: 250 },
+      dial: { r: 126, icon: 21, hi: 33, labelY: 188, label: 30, subY: 214, sub: 14, hintY: 236, hint: 12 },
+      list: { wheel: true, rowH: 50, x0: 56, x1: 304, titleY: 48, title: 14, hintY: 322, hint: 13, big: 22, small: 17 },
+      lock: { topY: 36, top: 14, titleY: 58, title: 14, titleW: 220, dotsY: 78, dotR: 5, dotGap: 20, keyTop: 96, keyH: 54, keyW: 72, keyR: 23, key: 22 },
+      toastY: 316, toast: 13 },
+    square: { base: 480,
+      rim: { inset: 13, width: 26, radius: 27 },
+      clock: { pillY: 74, pill: 19, taskY: 156, task: 36, taskW: 380, timeY: 286, time: 120, timeLong: 84, statusY: 324, status: 19, micY: 392, micR: 30, noMicShift: 34 },
+      // The top third of the screen.
+      arch: { bottom: 160, inset: 6, width: 12, radius: 34, pillY: 38, pill: 17, pillW: 260, timeY: 118, time: 72, timeLong: 54, taskY: 146, task: 18, taskW: 380 },
+      zoo: { feet: 244, sc: 10, nameY: 296, name: 36, actY: 336, act: 26, lineY: 372, line: 20, textW: 430, topY: 36, top: 17 },
+      zooClock: { feet: 304, sc: 7.5, nameY: 342, name: 30, actY: 376, act: 22, lineY: 404, line: 17, textW: 420 },
+      // Bluetooth and battery, together at six o'clock. [x, y, set into the rim]
+      status: { h: 13, clock: [240, 467, true], arc: [240, 460], zoo: [240, 460], list: [240, 460] },
+      dial: { r: 176, icon: 29, hi: 44, labelY: 244, label: 42, subY: 280, sub: 19, hintY: 310, hint: 16 },
+      list: { wheel: false, rowH: 54, y0: 66, maxY: 446, x0: 34, x1: 446, titleY: 42, title: 19, big: 22, small: 22 },
+      lock: { topX: 34, topY: 50, top: 19, titleY: 50, title: 21, titleW: 270, dotsY: 86, dotR: 8, dotGap: 32, keyTop: 112, keyH: 80, keyW: 110, keyR: 33, key: 30 },
+      dots: { y: 430, gap: 32, top: 412 },
+      toastY: 402, toast: 18 },
+  };
+
+  // ================= The dial's modes: a plain list =================
+  const MODES = [
+    { key: "timer", label: "Timer", about: "Tracks time in Toggl" },
+    { key: "pomodoro", label: "Pomodoro", about: "Counts down, and logs to Toggl" },
+    { key: "settings", label: "Settings", about: "Screen, Mac and more" },
+    { key: "zoo", label: "Agent Zoo", about: "Your coding agents" },
+    { key: "lock", label: "Lock", about: "Unlocks with a 4-digit code" },
+  ];
+
+  // ================= State =================
+  const MIN = 60000, THEMES = {
+    mono: { face: "#000000", ink: "#FFFFFF", soft: "#CFCCC5", sub: "#9A9A9F", faint: "#2A2A2D", amber: "#F5A623", ok: "#7BD88F",
+      toastBg: "#262523", toastInk: "#EDEBE5", offlineBg: "#3A2A10",
+      st: { working: "#7BD88F", needs: "#F5A623", done: "#5B8CFF", idle: "#6F6C66", failed: "#E5484D" } },
+    inverted: { face: "#FFFFFF", ink: "#000000", soft: "#3A3A3D", sub: "#66666B", faint: "#DCDCE0", amber: "#A86400", ok: "#1F8A50",
+      toastBg: "#1F1E1D", toastInk: "#FFFFFF", offlineBg: "#FFF1D6",
+      st: { working: "#1F9D57", needs: "#D98300", done: "#2F66E0", idle: "#8A8780", failed: "#D32F34" } },
+  };
+  const AMBER = "#F5A623", ORANGE = "#FF4D06", CRIMSON = "#E8143A";
+  const BRIGHT = ["Low", "Medium", "High"], DIM = ["brightness(.5)", "brightness(.75)", ""];
+  const PROJECT = { name: "Deep work", color: "#4FB3F6" };
+  const TASK = "Write the Q4 plan";
+
+  const t0 = performance.now();
+  const agent = (id, name, kind, st, act, ageMin) => ({ id, name, kind, st, act, since: t0 - ageMin * MIN, costume: costumeFor(id, kind) });
+  const S = {
+    mode: "timer", theme: "mono", task: TASK, project: PROJECT,
+    t: { state: "idle", session: 0, start: 0 },
+    p: { state: "idle", setMin: 25, remaining: 25 * MIN, total: 25 * MIN, last: 0 },
+    dial: { open: false, idx: 0, pos: 0, until: 0 },
+    set: { page: "main", key: "bright", from: "timer" },
+    bright: 2, autoscroll: false, vol: 6, autorotate: true, mac: "Any Mac", connected: true, queued: 0, battery: 82, charging: false,
+    agents: [
+      agent("a1000e7", "api-refactor-12", "claude", "working", "Editing main.c", 4),
+      agent("a1005e7", "docs-site-3f", "codex", "working", "Editing index.md", 2),
+      agent("a1001e7", "ml-eval-5d", "grok", "working", "Reading train.py", 11),
+      agent("a1006e7", "ci-cleanup-8b", "claude", "done", "Finished", 1),
+      agent("a1002e7", "landing-page-5b", "codex", "idle", "Waiting for a task", 26),
+    ],
+    sel: 0, pos: 0, pickedAt: -1e9, nextScroll: 0,
+    tilt: 0, flat: false, orient: [0], turn: null, turnWanted: null,
+    toast: { text: "", until: 0 }, hint: { text: "", until: 0 },
+    // The code is set on the Mac, and this one is a sample. A board stores only a salted hash of it.
+    lock: { open: false, pad: false, padUntil: 0, code: "1234", entry: "", msg: "", tries: 0, until: 0, shake: 0 },
+  };
+  const view = { knob: { listPos: 0 }, square: { listPos: 0 } };
+
+  // ================= What moves between the layers =================
+  const logEl = $("log"), LOG_MAX = 8;
+  function log(kind, who, text) {
+    const li = document.createElement("li");
+    li.className = kind;
+    const k = document.createElement("span"), m = document.createElement("span");
+    k.className = "k"; k.textContent = who; m.textContent = text;
+    li.append(k, m); logEl.prepend(li);
+    while (logEl.children.length > LOG_MAX) logEl.lastChild.remove();
+  }
+  const BOARD_NAME = { knob: "Knob", square: "Square" };
+
+  // The UX asks for feedback by name, and each board's drivers decide how to give it.
+  const FEEDBACK = {
+    knob: { tick: "Vibrates: tick", bump: "Vibrates: bump", tap: "Vibrates: tap", double: "Vibrates: double", alert: "Vibrates: alert", alarm: "Vibrates for 30 s" },
+    square: { tick: "Plays: click", bump: "Plays: low click", tap: "Plays: tap", double: "Plays: double tap", alert: "Plays: chime", alarm: "Plays: alarm" },
+  };
+  const fbTimers = {};
+  function feedback(kind) {
+    for (const id of ["knob", "square"]) {
+      const el = $(`fb-${id}`);
+      if (id === "square" && (!S.vol || S.lock.open)) continue; // no sound while locked
+      el.textContent = FEEDBACK[id][kind];
+      el.classList.add("show");
+      clearTimeout(fbTimers[id]);
+      fbTimers[id] = setTimeout(() => el.classList.remove("show"), 900);
+    }
+  }
+  function sendToMac(text) {
+    if (S.connected) log("mac", "To Mac", text);
+    else { S.queued++; log("mac", "Saved", `${text} (sends when the Mac is back)`); }
+  }
+  const announce = (t) => { $("live").textContent = t; };
+  const toast = (text, ms = 1600) => { S.toast = { text, until: performance.now() + ms }; };
+  const hint = (text, ms = 1400) => { S.hint = { text, until: performance.now() + ms }; };
+  const bump = (text) => { feedback("bump"); if (text) hint(text); };
+
+  // ================= Clocks =================
+  const clockRunning = () => (S.t.state === "running" ? "timer" : S.p.state === "running" ? "pomodoro" : null);
+  const trackElapsed = (now) => S.t.session + (S.t.state === "running" ? now - S.t.start : 0);
+  const pad = (n) => String(n).padStart(2, "0");
+  function fmt(ms, up) {
+    const s = up ? Math.floor(ms / 1000) : Math.ceil(ms / 1000);
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
+    if (!up) return `${pad(Math.floor(s / 60))}:${pad(x)}`;
+    return h ? `${pad(h)}:${pad(m)}:${pad(x)}` : `${pad(m)}:${pad(x)}`;
+  }
+  const remaining = (now) => (S.p.state === "running" ? Math.max(0, S.p.remaining - (now - S.p.last)) : S.p.remaining);
+  const clockText = (key, now) => (key === "timer" ? fmt(trackElapsed(now), true) : fmt(remaining(now), false));
+  function pomoReset() { S.p.state = "idle"; S.p.remaining = S.p.total = S.p.setMin * MIN; }
+  // How much of this countdown is left: 1 at the start, whatever its length, and 0 at zero.
+  const pomoFraction = (now) => clamp(remaining(now) / S.p.total, 0, 1);
+
+  function trackTap(now) {
+    if (S.t.state === "running") {
+      S.t.session += now - S.t.start; S.t.state = "paused"; sendToMac("Stop the Toggl entry");
+    } else {
+      if (S.t.state === "idle") S.t.session = 0;
+      S.t.start = now; S.t.state = "running"; sendToMac(`Start a Toggl entry: ${S.task || "Untitled"}`);
+    }
+    feedback("tap");
+  }
+  function pomoTap(now) {
+    if (S.p.state === "done") { pomoReset(); feedback("tap"); return; }
+    if (S.p.state === "running") {
+      S.p.remaining = remaining(now); S.p.state = "paused"; sendToMac("Stop the Toggl entry");
+    } else {
+      S.p.last = now; S.p.state = "running"; sendToMac(`Start a Toggl entry: ${S.task || "Untitled"}`);
+    }
+    feedback("tap");
+  }
+  function clearTaskProject() { S.task = ""; S.project = null; }
+  function holdClock(now) {
+    const c = S.mode === "timer" ? S.t : S.p, atRest = c.state === "idle" && !S.task && !S.project;
+    if (atRest) return bump();
+    if (c.state === "running") sendToMac("Stop the Toggl entry");
+    if (S.mode === "timer") { S.t.state = "idle"; S.t.session = 0; }
+    else pomoReset();
+    clearTaskProject(); hint("reset"); feedback("double");
+  }
+  function turnClock(dir, now) {
+    if (S.mode === "timer") {
+      if (S.t.state !== "running") return bump();
+      const stretch = now - S.t.start, shift = dir * MIN;
+      if (dir < 0 && stretch < MIN) return bump();
+      S.t.start -= shift; sendToMac("Move the entry's start"); feedback("tick");
+    } else if (S.p.state === "idle") {
+      const next = clamp(S.p.setMin + dir, 1, 60);
+      if (next === S.p.setMin) return bump();
+      S.p.setMin = next; pomoReset(); feedback("tick");
+    } else if (S.p.state === "paused") {
+      // To the next whole minute. The set length stays, and "full" grows only if the time goes past it.
+      const m = S.p.remaining / MIN, next = clamp(dir > 0 ? Math.floor(m) + 1 : Math.ceil(m) - 1, 1, 60);
+      if (next * MIN === S.p.remaining) return bump();
+      S.p.remaining = next * MIN; S.p.total = Math.max(S.p.total, S.p.remaining); feedback("tick");
+    } else if (S.p.state === "done") bump();
+    else bump("pause to adjust");
+  }
+
+  // ================= Settings =================
+  const SETTINGS = [
+    { key: "bright", label: "Brightness", val: () => BRIGHT[S.bright], act: () => { S.bright = (S.bright + 1) % 3; } },
+    { key: "auto", label: "Auto-scroll", val: () => (S.autoscroll ? "On" : "Off"), act: () => { S.autoscroll = !S.autoscroll; S.nextScroll = 0; } },
+    { key: "theme", label: "Color", val: () => (S.theme === "mono" ? "Mono" : "Inverted"), act: () => { S.theme = S.theme === "mono" ? "inverted" : "mono"; } },
+    { key: "sound", label: "Sound", needs: "speaker", val: () => (S.vol ? String(S.vol) : "Off"), act: () => { S.vol = (S.vol + 2) % 12; } },
+    { key: "rotate", label: "Auto-rotate", needs: "motion", val: () => (S.autorotate ? "On" : "Off"), act: () => { S.autorotate = !S.autorotate; checkOrient(); } },
+    { key: "mac", label: "Mac", val: () => S.mac, open: "macs" },
+    { key: "pair", label: "Pair a new Mac", val: () => "", open: "pair" },
+  ];
+  const MACS = ["Any Mac", "MacBook Pro", "Mac mini"];
+  function settingsRows(b) {
+    if (S.set.page === "macs") return MACS.map((m) => ({ key: m, label: m, val: () => (S.mac === m ? "✓" : ""), act: () => { S.mac = m; sendToMac(`Only ${m} may connect`); } }));
+    return SETTINGS.filter((r) => !r.needs || b.caps[r.needs]);
+  }
+  const listRowH = (L, n) => Math.min(L.list.rowH, (L.list.maxY - L.list.y0) / n);
+  function rowIndex(rows) { return Math.max(0, rows.findIndex((r) => r.key === S.set.key)); }
+  function settingsAct(row) {
+    if (row.open) { S.set.page = row.open; S.set.key = row.open === "macs" ? S.mac : ""; feedback("tap"); snapLists(); return; }
+    row.act(); S.set.key = row.key; feedback("tap");
+    if (row.key === "bright") applyBrightness();
+  }
+  function settingsBack() {
+    if (S.set.page !== "main") { S.set.key = S.set.page === "macs" ? "mac" : "pair"; S.set.page = "main"; snapLists(); }
+    else S.mode = S.set.from;
+    feedback("tap");
+  }
+  function snapLists() {
+    for (const id of ["knob", "square"]) view[id].listPos = rowIndex(settingsRows(BOARDS[id]));
+  }
+  function applyBrightness() { for (const c of [$("cv-knob"), $("cv-square")]) c.style.filter = DIM[S.bright]; }
+
+  // ================= The lock =================
+  // The code is set in the desktop app. Locked, the screen keeps its normal content and clocks keep running.
+  // The first touch or knob turn only brings up the keypad. Digits come from touch, on every board.
+  // Sounds stay off until it's unlocked.
+  const LOCK_TRIES = 5, LOCK_WAIT = 30000, LOCK_PAD_MS = 10000;
+  const LOCK_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
+  function engageLock() {
+    Object.assign(S.lock, { open: true, pad: false, entry: "", msg: "", tries: 0 });
+    log("output", "UX", "Lock the screen"); announce("Locked");
+  }
+  // True if this input only brought up the keypad, so it shouldn't do anything else.
+  function lockWake(now) {
+    const K = S.lock;
+    K.padUntil = now + LOCK_PAD_MS;
+    if (K.pad) return false;
+    Object.assign(K, { pad: true, entry: "", msg: "" });
+    feedback("tick"); announce("Enter code");
+    return true;
+  }
+  function lockSleep() { Object.assign(S.lock, { pad: false, entry: "", msg: "" }); }
+  function lockFail(msg) {
+    Object.assign(S.lock, { msg, entry: "", shake: performance.now() });
+    feedback("bump");
+  }
+  function lockPush(d, now) {
+    const K = S.lock;
+    if (now < K.until) return feedback("bump");
+    K.entry += d; K.msg = "";
+    if (K.entry.length < 4) return feedback("tick");
+    const code = K.entry; K.entry = "";
+    if (code === K.code) {
+      K.open = false; K.pad = false; K.tries = 0; feedback("double"); log("output", "UX", "Unlock the screen"); announce("Unlocked");
+      return;
+    }
+    K.tries++;
+    if (K.tries >= LOCK_TRIES) { K.tries = 0; K.until = now + LOCK_WAIT; }
+    lockFail("Wrong code");
+  }
+  function lockKeyAt(L, u, v) {
+    const K = L.lock, x0 = L.base / 2 - K.keyW * 1.5, col = Math.floor((u - x0) / K.keyW), row = Math.floor((v - K.keyTop) / K.keyH);
+    return col >= 0 && col < 3 && row >= 0 && row < 4 ? LOCK_KEYS[row * 3 + col] : "";
+  }
+  function lockDelete() {
+    if (!S.lock.entry) return feedback("bump");
+    S.lock.entry = S.lock.entry.slice(0, -1); feedback("tick");
+  }
+  function lockTap(L, u, v, now) {
+    const key = lockKeyAt(L, u, v);
+    if (key === "del") lockDelete();
+    else if (key) lockPush(key, now);
+  }
+  function lockSwipe(dir) {
+    if (dir === "left") return lockDelete();
+    feedback("bump"); // Locked, nothing else opens.
+  }
+  function lockHold() {
+    if (!S.lock.entry) return feedback("bump");
+    S.lock.entry = ""; feedback("double");
+  }
+  function lockMessage(now) {
+    const K = S.lock;
+    if (now < K.until) return { text: `Try again in ${Math.ceil((K.until - now) / 1000)} s`, alert: true };
+    if (K.msg) return { text: K.msg, alert: true };
+    if (S.p.state === "done") return { text: "Time's up", alert: true };
+    if (firstNeeding()) return { text: "An agent needs you", alert: true }; // no name while locked
+    return { text: "Enter code" };
+  }
+  // From the desktop app, over the link. A new code replaces a forgotten one, also while locked.
+  function macSetLockCode(code) {
+    Object.assign(S.lock, { code, entry: "", msg: "", tries: 0, until: 0 });
+    log("mac", "From Mac", "New lock code"); toast("Lock code updated");
+  }
+  function macRemoveLockCode() {
+    Object.assign(S.lock, { code: "", open: false, pad: false, entry: "", msg: "", tries: 0, until: 0 });
+    log("mac", "From Mac", "Lock code removed");
+  }
+
+  // ================= The dial =================
+  const modeIndex = (key) => MODES.findIndex((m) => m.key === key);
+  function dialOpen(now) {
+    const i = modeIndex(S.mode);
+    Object.assign(S.dial, { open: true, idx: i, pos: i, until: now + 10000 });
+    feedback("tap"); announce("Mode dial");
+  }
+  function dialClose() { S.dial.open = false; feedback("tap"); }
+  function dialChoose(i, now) {
+    const m = MODES[mod(i, MODES.length)], run = clockRunning();
+    if (run && (m.key === "timer" || m.key === "pomodoro") && m.key !== run) {
+      S.dial.until = now + 10000;
+      return bump("pause to switch");
+    }
+    if (m.key === "lock") { // an action: it doesn't change the mode underneath
+      if (!S.lock.code) { S.dial.until = now + 10000; return bump("set a code on your Mac"); }
+      S.dial.open = false; feedback("tap");
+      return engageLock();
+    }
+    S.dial.open = false;
+    if (m.key === "settings" && S.mode !== "settings") { S.set = { page: "main", key: "bright", from: S.mode }; snapLists(); }
+    S.mode = m.key; feedback("tap"); announce(m.label);
+    log("output", "UX", `Open ${m.label}`);
+  }
+
+  // ================= Agents =================
+  function selectAgent(i, manual, now) {
+    const n = S.agents.length; if (!n) return;
+    S.sel = mod(i, n); if (manual) S.pickedAt = now;
+    if (manual) { feedback("tick"); log("output", "UX", `Show ${S.agents[S.sel].name}`); }
+  }
+  const nearestAgentStep = (pos, i, n) => { let d = mod(i - pos + n / 2, n) - n / 2; return pos + d; };
+  function needsYou(now) {
+    const a = S.agents.find((x) => x.st !== "needs");
+    if (!a) return;
+    a.st = "needs"; a.act = "Waiting for your answer"; a.since = now;
+    log("mac", "From Mac", `${a.name} needs you`);
+    feedback("alert");
+    if (S.mode === "zoo" && !S.dial.open) S.sel = S.agents.indexOf(a);
+    announce(`${a.name} needs you`);
+  }
+  function answerAgent(a, now) {
+    a.st = "working"; a.act = "Editing main.c"; a.since = now;
+    log("mac", "From Mac", `${a.name} is working again`);
+  }
+  const firstNeeding = () => S.agents.find((a) => a.st === "needs");
+
+  // ================= Input: boards report generic events, and the UX decides =================
+  function turn(id, dir, now) {
+    log("input", BOARD_NAME[id], `Reports: ${dir > 0 ? "next" : "previous"}`);
+    S.hint.until = Math.min(S.hint.until, now);
+    if (S.lock.open) { if (!lockWake(now)) feedback("bump"); return; } // digits come from touch
+    if (S.dial.open) { S.dial.idx += dir; S.dial.until = now + 10000; feedback("tick"); return; }
+    if (S.mode === "zoo") return selectAgent(S.sel + dir, true, now);
+    if (S.mode === "settings") {
+      const rows = settingsRows(BOARDS[id]), i = rowIndex(rows), next = i + dir;
+      if (S.set.page === "pair") return bump();
+      if (next < 0 || next >= rows.length) return bump();
+      S.set.key = rows[next].key; feedback("tick"); return;
+    }
+    turnClock(dir, now);
+  }
+  function tap(id, x, y, now) {
+    log("input", BOARD_NAME[id], `Reports: tap (${Math.round(x)}, ${Math.round(y)})`);
+    const b = BOARDS[id], L = LAYOUTS[b.shape], k = b.w / L.base, u = x / k, v = y / k;
+    if (S.lock.open) { if (!lockWake(now)) lockTap(L, u, v, now); return; }
+    if (S.dial.open) {
+      const c = L.base / 2, D = L.dial, n = MODES.length;
+      for (let i = 0; i < n; i++) {
+        const a = dialAngle(i), ix = c + D.r * Math.sin(a), iy = c - D.r * Math.cos(a);
+        if (Math.hypot(u - ix, v - iy) < D.hi * 1.15) return dialChoose(i, now);
+      }
+      return dialChoose(S.dial.idx, now);
+    }
+    if (S.mode === "settings") {
+      if (S.set.page === "pair") return settingsBack();
+      const rows = settingsRows(b);
+      if (L.list.wheel) return settingsAct(rows[rowIndex(rows)]);
+      const i = Math.floor((v - L.list.y0) / listRowH(L, rows.length));
+      if (i >= 0 && i < rows.length) settingsAct(rows[i]);
+      return;
+    }
+    if (S.mode === "zoo") {
+      const run = clockRunning();
+      if (run && v < L.arch.bottom) { S.mode = run; feedback("tap"); log("output", "UX", `Open ${run === "timer" ? "Timer" : "Pomodoro"}`); return; }
+      if (L.dots && v >= L.dots.top) {
+        let best = -1, bestDist = Infinity;
+        S.agents.forEach((_, i) => { const dist = Math.abs(dotPosition(L, i, S.agents.length).x - u); if (dist < bestDist) { best = i; bestDist = dist; } });
+        if (best >= 0) selectAgent(best, true, now);
+        return;
+      }
+      const a = S.agents[S.sel];
+      if (!a) return;
+      if (a.st === "needs") answerAgent(a, now);
+      sendToMac(`Focus ${a.name}'s Rex pane`); toast("Focusing in Rex"); feedback("tap");
+      return;
+    }
+    const C = clockLayout(b, L);
+    if (b.caps.mic && Math.hypot(u - L.base / 2, v - C.micY) < C.micR + 10) { hint("voice works as it does today"); feedback("tick"); return; }
+    if (v < C.taskY + 10) { hint("lists work as they do today"); feedback("tick"); return; }
+    (S.mode === "timer" ? trackTap : pomoTap)(now);
+  }
+  function hold(id, now) {
+    log("input", BOARD_NAME[id], "Reports: hold");
+    if (S.lock.open) { if (!lockWake(now)) lockHold(); return; }
+    if (S.dial.open) return;
+    if (S.mode === "timer" || S.mode === "pomodoro") return holdClock(now);
+    if (S.mode === "zoo") { toast("Details card, as it is today"); feedback("tick"); return; }
+    feedback("bump");
+  }
+  function swipe(id, dir, now) {
+    log("input", BOARD_NAME[id], `Reports: swipe ${dir}`);
+    if (S.lock.open) { if (!lockWake(now)) lockSwipe(dir); return; }
+    if (dir === "up") { if (S.dial.open) dialClose(); else dialOpen(now); return; }
+    if (dir === "down") {
+      if (S.dial.open) return dialClose();
+      if (S.mode === "settings") return settingsBack();
+      if (S.mode === "timer") {
+        if (!S.connected) return bump("no Mac");
+        sendToMac("Check what's running in Toggl"); hint("in sync"); feedback("tap"); return;
+      }
+      if (S.mode === "pomodoro") return bump("tracking only");
+      return;
+    }
+    const step = dir === "left" ? 1 : -1;
+    if (S.dial.open) { S.dial.idx += step; S.dial.until = now + 10000; feedback("tick"); return; }
+    if (S.mode === "zoo") return selectAgent(S.sel + step, true, now);
+    feedback("bump"); // Elsewhere these swipes do nothing. The color profile changes only in Settings.
+  }
+
+  // ================= Rotation: the motion sensor reports a tilt, and the UX redraws the screen =================
+  const HYSTERESIS = 12; // degrees past the halfway point, so the screen doesn't flip back and forth
+  const TURN_WAIT = 700; // the board must stay turned this long (ms) before the screen follows
+  const TURN_MS = 320;   // how long the screen takes to turn (ms)
+  function angleDiff(a, b) { return mod(a - b + 180, 360) - 180; }
+  // Notes which way the screen should turn. A board that moves back in time cancels it.
+  function checkOrient(now = performance.now()) {
+    if (!S.autorotate || S.flat || Math.abs(angleDiff(S.tilt, S.orient[0])) <= 45 + HYSTERESIS) { S.turnWanted = null; return; }
+    const to = mod(Math.round(S.tilt / 90) * 90, 360);
+    if (!S.turnWanted || S.turnWanted.to !== to) S.turnWanted = { to, since: now };
+  }
+  function updateTurn(now) {
+    if (S.turn && now - S.turn.at >= TURN_MS) S.turn = null;
+    if (S.turn) return;
+    checkOrient(now);
+    if (S.turnWanted && now - S.turnWanted.since >= TURN_WAIT) {
+      S.turn = { from: S.orient[0], to: S.turnWanted.to, at: now };
+      S.orient[0] = S.turnWanted.to; S.turnWanted = null;
+      log("input", "Square", `Reports: ${S.orient[0]}° from upright`);
+    }
+  }
+  function shownOrient(now) {
+    if (!S.turn) return S.orient[0];
+    const p = clamp((now - S.turn.at) / TURN_MS, 0, 1), eased = 1 - (1 - p) ** 3;
+    return S.turn.from + angleDiff(S.turn.to, S.turn.from) * eased;
+  }
+  function setTilt(deg) {
+    S.tilt = mod(deg, 360);
+    $("square").style.transform = `rotate(${S.tilt}deg)`;
+    $("tilt").value = S.tilt; $("tilt-out").textContent = `${Math.round(S.tilt)}°`;
+    checkOrient();
+  }
+
+  // ================= Drawing helpers =================
+  function text(c, str, x, y, size, weight, color, align = "center", maxw = 0, alpha = 1) {
+    c.font = `${weight} ${size}px ${FONT}`; c.fillStyle = color; c.textAlign = align; c.textBaseline = "alphabetic"; c.globalAlpha = alpha;
+    let s = String(str);
+    if (maxw && c.measureText(s).width > maxw) {
+      while (s.length > 1 && c.measureText(s + "…").width > maxw) s = s.slice(0, -1);
+      s = s.trimEnd() + "…";
+    }
+    c.fillText(s, x, y); c.globalAlpha = 1;
+  }
+  // Tabular figures: every digit takes the same width.
+  function drawTime(c, str, cx, y, size, color, scale = 1, alpha = 1, shine = 0) {
+    c.save(); c.translate(cx, y - size * .36); c.scale(scale, scale); c.translate(-cx, -(y - size * .36));
+    c.font = `600 ${size}px ${FONT}`; c.fillStyle = color; c.textBaseline = "alphabetic"; c.textAlign = "center"; c.globalAlpha = alpha;
+    if (shine) { c.shadowColor = color; c.shadowBlur = size * .55 * shine; }
+    const dw = c.measureText("0").width, cw = c.measureText(":").width * .9;
+    const width = [...str].reduce((w, ch) => w + (ch === ":" ? cw : dw), 0);
+    let px = cx - width / 2;
+    for (const ch of str) { const w = ch === ":" ? cw : dw; c.fillText(ch, px + w / 2, y); px += w; }
+    c.restore();
+  }
+  function rimPoint(L, f, inset, radius) {
+    const size = L.base, c = size / 2;
+    if (radius === 0) {
+      const a = f * Math.PI * 2 - Math.PI / 2, r = c - inset;
+      return { x: c + r * Math.cos(a), y: c + r * Math.sin(a), nx: Math.cos(a), ny: Math.sin(a) };
+    }
+    // A rounded square, clockwise from the middle of the top edge.
+    const m = inset, r = radius, side = size - 2 * m - 2 * r, q = Math.PI * r / 2, P = 4 * side + 4 * q;
+    let s = mod(f, 1) * P;
+    const seg = (len) => { if (s <= len) return true; s -= len; return false; };
+    if (seg(side / 2)) return { x: c + s, y: m, nx: 0, ny: -1 };
+    const corners = [[size - m - r, m + r, -Math.PI / 2], [size - m - r, size - m - r, 0], [m + r, size - m - r, Math.PI / 2], [m + r, m + r, Math.PI]];
+    const edges = [(d) => ({ x: size - m, y: m + r + d, nx: 1, ny: 0 }), (d) => ({ x: size - m - r - d, y: size - m, nx: 0, ny: 1 }), (d) => ({ x: m, y: size - m - r - d, nx: -1, ny: 0 }), (d) => ({ x: m + r + d, y: m, nx: 0, ny: -1 })];
+    for (let i = 0; i < 4; i++) {
+      if (seg(q)) { const a = corners[i][2] + (s / q) * Math.PI / 2; return { x: corners[i][0] + r * Math.cos(a), y: corners[i][1] + r * Math.sin(a), nx: Math.cos(a), ny: Math.sin(a) }; }
+      const len = i < 3 ? side : side / 2;
+      if (seg(len)) return edges[i](s);
+    }
+    return { x: c, y: m, nx: 0, ny: -1 };
+  }
+  function band(c, L, f0, f1, inset, radius, width, color, alpha = 1) {
+    if (f1 <= f0) return;
+    c.beginPath();
+    const n = Math.max(2, Math.ceil((f1 - f0) * 360));
+    for (let i = 0; i <= n; i++) { const p = rimPoint(L, lerp(f0, f1, i / n), inset, radius); if (i) c.lineTo(p.x, p.y); else c.moveTo(p.x, p.y); }
+    if (f1 - f0 >= 1) c.closePath();
+    c.lineWidth = width; c.lineJoin = "round"; c.strokeStyle = color; c.globalAlpha = alpha; c.stroke(); c.globalAlpha = 1;
+  }
+  function notches(c, L, f0, f1, inset, radius, width, color) {
+    c.strokeStyle = color; c.lineWidth = 1.5;
+    for (let i = 0; i < 60; i++) {
+      for (const f of [i / 60, i / 60 + 1]) {
+        if (f < f0 || f > f1) continue;
+        const p = rimPoint(L, f, inset, radius);
+        c.beginPath(); c.moveTo(p.x - p.nx * width / 2, p.y - p.ny * width / 2); c.lineTo(p.x + p.nx * width / 2, p.y + p.ny * width / 2); c.stroke();
+      }
+    }
+  }
+  // A soft glow that fades inward from a line `inset` pixels in from the edge.
+  function glow(c, L, color, strength, inset = 0) {
+    const k = L.base / 360, radius = L.rim.radius ? Math.max(8, 40 - inset) : 0, steps = 18;
+    for (let i = 0; i < steps; i++) {
+      const w = lerp(40, 2, i / (steps - 1)) * k;
+      band(c, L, 0, 1, inset, radius, w, color, .034 * strength);
+    }
+  }
+  const readableOn = (hex) => { const v = (i) => parseInt(hex.slice(i, i + 2), 16) / 255; return .2126 * v(1) + .7152 * v(3) + .0722 * v(5) > .55 ? "#111111" : "#FFFFFF"; };
+  // Color helpers (OKLab), copied from the original timer, so that a fade never sweeps through purple.
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+  const toLin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const toSrgb = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+  function rgbToOklab(rgb) {
+    const [r, g, b] = rgb.map(toLin);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+  }
+  function oklabToCss([L, a, b]) {
+    const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+    const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+    const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+    const rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+                -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+                -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+    return "rgb(" + rgb.map((c) => Math.round(Math.min(1, toSrgb(Math.max(0, c))) * 255)).join(",") + ")";
+  }
+  const PURPLE = [285, 345];
+  function crossesPurple(h, dh) {
+    for (let k = 1; k < 24; k++) {
+      const deg = (((h + dh * k / 24) * 180 / Math.PI) % 360 + 360) % 360;
+      if (deg > PURPLE[0] && deg < PURPLE[1]) return true;
+    }
+    return false;
+  }
+  function mixLch(p, q, t) {
+    const lch = ([L, a, b]) => [L, Math.hypot(a, b), Math.atan2(b, a)];
+    let [L1, C1, h1] = lch(p);
+    const [L2, C2, h2] = lch(q);
+    if (C1 < 0.02) h1 = h2;
+    let dh = h2 - h1;
+    if (dh > Math.PI) dh -= 2 * Math.PI; else if (dh < -Math.PI) dh += 2 * Math.PI;
+    const startDeg = ((h1 * 180 / Math.PI) % 360 + 360) % 360;
+    const startsPurple = C1 >= 0.02 && startDeg > PURPLE[0] && startDeg < PURPLE[1];
+    if (!startsPurple && crossesPurple(h1, dh)) dh += dh > 0 ? -2 * Math.PI : 2 * Math.PI;
+    const L = L1 + (L2 - L1) * t, C = C1 + (C2 - C1) * t, h = h1 + dh * t;
+    return [L, C * Math.cos(h), C * Math.sin(h)];
+  }
+  const ORANGE_LAB = rgbToOklab(hexRgb(ORANGE)), CRIMSON_LAB = rgbToOklab(hexRgb(CRIMSON));
+  // The Pomodoro's warm-up: from 10:00 the color fades to orange at 5:00, then to crimson at 1:00.
+  function warm(ink, ms) {
+    const min = ms / MIN;
+    if (min >= 10) return ink;
+    if (min >= 5) return oklabToCss(mixLch(rgbToOklab(hexRgb(ink)), ORANGE_LAB, (10 - min) / 5));
+    if (min >= 1) return oklabToCss(mixLch(ORANGE_LAB, CRIMSON_LAB, (5 - min) / 4));
+    return CRIMSON;
+  }
+  // The last minute's pulse, like a heartbeat: 0 to 1, once a second.
+  const calm = matchMedia("(prefers-reduced-motion: reduce)");
+  function pomoPulse(now) {
+    if (calm.matches || !(S.p.state === "done" || (S.p.state === "running" && remaining(now) <= MIN))) return 0;
+    const ph = (now % 1000) / 1000;
+    return ph < .18 ? Math.sin((ph / .18) * Math.PI / 2) : .5 + .5 * Math.cos(((ph - .18) / .82) * Math.PI);
+  }
+  function btGlyph(c, x, y, h, color) {
+    const w = h * .28, t = y - h / 2, bo = y + h / 2;
+    c.beginPath(); c.moveTo(x - w, y - h * .24); c.lineTo(x + w, y + h * .24); c.lineTo(x, bo); c.lineTo(x, t); c.lineTo(x + w, y - h * .24); c.lineTo(x - w, y + h * .24);
+    c.lineWidth = Math.max(1.3, h * .1); c.strokeStyle = color; c.lineJoin = "round"; c.lineCap = "round"; c.stroke(); c.lineCap = "butt";
+  }
+  function lockGlyph(c, x, y, s, color) {
+    c.strokeStyle = color; c.fillStyle = color; c.lineWidth = Math.max(1.3, s * .13);
+    c.beginPath(); c.arc(x, y - s * .14, s * .24, Math.PI, 0); c.moveTo(x + s * .24, y - s * .14); c.lineTo(x + s * .24, y); c.moveTo(x - s * .24, y - s * .14); c.lineTo(x - s * .24, y); c.stroke();
+    c.beginPath(); c.roundRect(x - s * .4, y - s * .04, s * .8, s * .52, s * .1); c.fill();
+  }
+  function micIcon(c, x, y, s, color) {
+    c.strokeStyle = color; c.fillStyle = color; c.lineWidth = s * .13; c.lineCap = "round";
+    c.beginPath(); c.roundRect(x - s * .2, y - s * .55, s * .4, s * .75, s * .2); c.fill();
+    c.beginPath(); c.arc(x, y - s * .08, s * .4, 0, Math.PI); c.stroke();
+    c.beginPath(); c.moveTo(x, y + s * .32); c.lineTo(x, y + s * .55); c.stroke(); c.lineCap = "butt";
+  }
+  const DEFAULT_LOOK = { kind: "claude", hat: "beanie", outfit: "none", acc: "none" };
+  function pose(a, t, i) {
+    const p = { sx: 1, sy: 1, alpha: 1, bodyCol: CLAUDE, eyes: "open", look: 0, armL: 0, armR: 0, legA: false, legB: false, hatDy: 0, prop: Math.floor(t * 8) % 4, flutter: .5, t };
+    const st = a ? a.st : "idle";
+    if (st === "working") { const step = Math.floor(t * 6 + i) % 2 === 0; p.legA = step; p.legB = !step; p.look = Math.floor(t / 2 + i) % 3 === 0 ? 1 : 0; }
+    else if (st === "needs") { p.eyes = "wide"; p.armR = Math.floor(t * 4) % 2 ? -2 : -1; p.armL = Math.floor(t * 4) % 2 ? -1 : -2; }
+    else if (st === "done") { p.eyes = "happy"; p.armL = p.armR = -2; }
+    else if (st === "idle") { p.eyes = "closed"; }
+    else if (st === "failed") { p.eyes = "x"; p.bodyCol = CLAUDE_SICK; }
+    return p;
+  }
+  function modeIcon(c, key, x, y, r, color, t, active) {
+    c.strokeStyle = color; c.fillStyle = color; c.lineWidth = Math.max(1.6, r * .13); c.lineCap = "round"; c.globalAlpha = active ? 1 : .8;
+    if (key === "timer") {
+      c.beginPath(); c.arc(x, y, r * .72, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - r * .44); c.moveTo(x, y); c.lineTo(x + r * .32, y + r * .1); c.stroke();
+      c.beginPath(); c.moveTo(x - r * .22, y - r * .98); c.lineTo(x + r * .22, y - r * .98); c.stroke();
+    } else if (key === "pomodoro") {
+      c.beginPath(); c.arc(x, y, r * .78, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.moveTo(x, y); c.arc(x, y, r * .5, -Math.PI / 2, Math.PI * .55); c.closePath(); c.fill();
+    } else if (key === "settings") {
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; c.beginPath(); c.moveTo(x + r * .58 * Math.cos(a), y + r * .58 * Math.sin(a)); c.lineTo(x + r * .86 * Math.cos(a), y + r * .86 * Math.sin(a)); c.lineWidth = r * .22; c.stroke(); }
+      c.lineWidth = Math.max(1.6, r * .15); c.beginPath(); c.arc(x, y, r * .5, 0, Math.PI * 2); c.stroke();
+    } else if (key === "zoo") {
+      c.globalAlpha = 1; c.lineCap = "butt";
+      const p = pose({ st: "working" }, t, 0); drawMascot(c, DEFAULT_LOOK, p, x, y + r * .55, r / 8.5);
+    } else if (key === "lock") {
+      c.beginPath(); c.arc(x, y - r * .2, r * .36, Math.PI, 0); c.lineTo(x + r * .36, y + r * .05); c.moveTo(x - r * .36, y + r * .05); c.lineTo(x - r * .36, y - r * .2); c.stroke();
+      c.beginPath(); c.roundRect(x - r * .62, y + r * .02, r * 1.24, r * .78, r * .14); c.fill();
+    } else {
+      c.beginPath(); c.arc(x, y, r * .7, 0, Math.PI * 2); c.stroke();
+    }
+    c.globalAlpha = 1; c.lineCap = "butt";
+  }
+
+  // ================= Screens =================
+  // A board with no mic button moves the clock down to fill the space.
+  function clockLayout(b, L) {
+    const C = L.clock, dy = b.caps.mic ? 0 : C.noMicShift || 0;
+    return { ...C, pillY: C.pillY + dy, taskY: C.taskY + dy, timeY: C.timeY + dy, statusY: C.statusY + dy };
+  }
+  function statusFor(key, now) {
+    const c = key === "timer" ? S.t : S.p;
+    if (now < S.hint.until) return { text: S.hint.text };
+    const a = firstNeeding();
+    if (a) return { text: `${a.name} needs you`, amber: true };
+    if (!S.connected && c.state === "running") return { text: "no Mac: saved for later" };
+    // While a clock runs, the moving time says so: the line stays empty.
+    if (c.state === "running") return { text: "" };
+    if (c.state === "paused") return { text: "paused" };
+    if (c.state === "done") return { text: "time's up" };
+    return { text: key === "timer" ? "tap to track" : "tap to start" };
+  }
+  function drawClock(c, b, L, T, key, now, t) {
+    const R = L.rim, mid = L.base / 2, rimCol = S.project ? S.project.color : T.ink;
+    const C = clockLayout(b, L), pomo = key === "pomodoro";
+    c.fillStyle = T.face; c.fillRect(0, 0, L.base, L.base);
+    if (firstNeeding()) glow(c, L, AMBER, .55 + .45 * Math.abs(Math.sin(t * 2)), R.width);
+    // The rim
+    if (pomo) {
+      band(c, L, 0, 1, R.inset, R.radius, R.width, rimCol, .16);
+      const rem = S.p.state === "done" ? 0 : remaining(now);
+      band(c, L, 0, Math.min(1, rem / (60 * MIN)), R.inset, R.radius, R.width, rimCol);
+      notches(c, L, 0, 1, R.inset, R.radius, R.width, T.face);
+    } else {
+      band(c, L, 0, 1, R.inset, R.radius, R.width, rimCol);
+      notches(c, L, 0, 1, R.inset, R.radius, R.width, T.face);
+    }
+    drawPill(c, mid, C.pillY, C.pill, C.taskW * .72, T);
+    // The task
+    text(c, S.task || "Untitled", mid, C.taskY, C.task, 500, S.task ? T.ink : T.sub, "center", C.taskW);
+    // The time
+    const str = clockText(key, now), long = str.length > 5, size = long ? C.timeLong : C.time;
+    // The warm-up colors the time, the status and the mic, also before the Pomodoro starts.
+    const ms = pomo ? remaining(now) : Infinity, live = pomo ? warm(T.ink, ms) : T.ink, warmed = pomo && ms < 10 * MIN;
+    const paused = (pomo ? S.p.state : S.t.state) === "paused", f = pomo ? pomoPulse(now) : 0;
+    drawTime(c, str, mid, C.timeY - (long ? (C.time - C.timeLong) * .36 : 0), size, live, 1 + .07 * f, paused ? .55 : 1, .85 * f);
+    // The status line
+    const st = statusFor(key, now);
+    text(c, st.text, mid, C.statusY, C.status, 500, st.amber ? T.amber : warmed ? live : T.sub, "center", C.taskW);
+    if (b.caps.mic) {
+      c.beginPath(); c.arc(mid, C.micY, C.micR, 0, Math.PI * 2); c.strokeStyle = live; c.lineWidth = 1.5; c.stroke();
+      micIcon(c, mid, C.micY, C.micR * .8, live);
+    }
+  }
+
+  // The project: filled with its color, or an outlined "No project".
+  function drawPill(c, x, y, size, maxW, T) {
+    const label = S.project ? S.project.name : "No project";
+    c.font = `700 ${size}px ${FONT}`;
+    const w = Math.min(c.measureText(label).width + size * 1.9, maxW), h = size * 1.9;
+    c.beginPath(); c.roundRect(x - w / 2, y - h / 2, w, h, h / 2);
+    if (S.project) { c.fillStyle = S.project.color; c.fill(); } else { c.strokeStyle = T.sub; c.lineWidth = 1.4; c.stroke(); }
+    text(c, label, x, y + size * .36, size, 700, S.project ? readableOn(S.project.color) : T.sub, "center", w - size);
+  }
+  // Where the rim's band reaches the divider, on the left. The right is its mirror image.
+  function archStart(L, inset, radius, y) {
+    let lo = .5, hi = 1;
+    for (let i = 0; i < 24; i++) { const f = (lo + hi) / 2; if (rimPoint(L, f, inset, radius).y > y) lo = f; else hi = f; }
+    return lo;
+  }
+  // The clock's section: only the top arc of a round screen, or the top third of a square one.
+  // It has no gray: only the screen's black or white, its ink and the project's color.
+  function drawArch(c, L, T, key, now, t) {
+    const A = L.arch, mid = L.base / 2, col = S.project ? S.project.color : T.ink;
+    c.fillStyle = T.face; c.fillRect(0, 0, L.base, A.bottom);
+    c.fillStyle = col; c.fillRect(0, A.bottom - 1, L.base, 1.5);
+    const f0 = archStart(L, A.inset, A.radius, A.bottom), f1 = 2 - f0;
+    if (key === "pomodoro") {
+      // The share of this countdown that's left, over a thin line that shows what "full" is. No minute marks.
+      band(c, L, f0, f1, A.inset, A.radius, 1.5, col);
+      band(c, L, f0, f0 + (f1 - f0) * pomoFraction(now), A.inset, A.radius, A.width, col);
+    } else {
+      band(c, L, f0, f1, A.inset, A.radius, A.width, col);
+      notches(c, L, f0, f1, A.inset, A.radius, A.width, T.face);
+    }
+    drawPill(c, mid, A.pillY, A.pill, A.pillW, { ...T, sub: T.ink });
+    const str = clockText(key, now), long = str.length > 5, ms = key === "pomodoro" ? remaining(now) : Infinity;
+    const f = key === "pomodoro" ? pomoPulse(now) : 0;
+    drawTime(c, str, mid, A.timeY, long ? A.timeLong : A.time, key === "pomodoro" ? warm(T.ink, ms) : T.ink, 1 + .05 * f, 1, .85 * f);
+    text(c, S.task || "Untitled", mid, A.taskY, A.task, 500, T.ink, "center", A.taskW);
+  }
+
+  // Bluetooth and battery, side by side at six o'clock. On a clock's screen they're set into the rim.
+  function drawStatus(c, b, L, T, where, t) {
+    const [x, y, inRim] = L.status[where], h = L.status.h, glyph = h * 1.3, gw = glyph * .56, gap = h * .75, bw = h * 2.1, nub = h * .2;
+    const lockW = S.lock.open ? h + gap : 0; // the lock icon, while the board is locked
+    const total = lockW + gw + (b.caps.battery ? gap + bw + nub : 0);
+    let px = x - total / 2;
+    if (inRim) {
+      const w = total + h * 1.5, tall = h * 1.9;
+      c.fillStyle = T.face; c.beginPath(); c.roundRect(x - w / 2, y - tall / 2, w, tall, tall / 2); c.fill();
+    }
+    if (S.lock.open) { lockGlyph(c, px + h / 2, y, h * 1.25, T.ink); px += lockW; }
+    c.globalAlpha = S.connected ? 1 : .25 + .75 * Math.abs(Math.sin(t * 2.4));
+    btGlyph(c, px + gw / 2, y, glyph, T.ink); c.globalAlpha = 1;
+    if (!b.caps.battery) return;
+    px += gw + gap;
+    const low = S.battery <= 15 && !S.charging, fill = S.charging ? "#2FA866" : low ? CRIMSON : T.ink, pad = Math.max(1.5, h * .17);
+    c.strokeStyle = low ? CRIMSON : T.ink; c.lineWidth = Math.max(1.2, h * .12);
+    c.beginPath(); c.roundRect(px, y - h / 2, bw, h, h * .24); c.stroke();
+    c.fillStyle = low ? CRIMSON : T.ink; c.fillRect(px + bw + 1, y - h * .2, nub - 1, h * .4);
+    c.fillStyle = fill;
+    c.fillRect(px + pad, y - h / 2 + pad, (bw - pad * 2) * clamp(S.battery, 0, 100) / 100, h - pad * 2);
+    if (S.charging) {
+      const m = px + bw / 2, s = h * .42;
+      c.beginPath(); c.moveTo(m + s * .25, y - s); c.lineTo(m - s * .55, y + s * .12); c.lineTo(m - s * .02, y + s * .12);
+      c.lineTo(m - s * .25, y + s); c.lineTo(m + s * .55, y - s * .12); c.lineTo(m + s * .02, y - s * .12); c.closePath();
+      c.fillStyle = T.ink; c.strokeStyle = T.face; c.lineWidth = 1; c.stroke(); c.fill();
+    }
+  }
+
+  // On a white screen, a thin dark edge keeps a character's white parts visible, such as the Grok ball or a coffee cup.
+  const spriteCv = document.createElement("canvas"), edgeCv = document.createElement("canvas");
+  function drawCharacter(c, look, p, x, feet, sc) {
+    if (S.theme !== "inverted") return drawMascot(c, look, p, x, feet, sc);
+    const w = Math.ceil(sc * 34), h = Math.ceil(sc * 26), ox = Math.round(w / 2), oy = Math.round(h - sc * 3);
+    spriteCv.width = edgeCv.width = w; spriteCv.height = edgeCv.height = h;
+    drawMascot(spriteCv.getContext("2d"), look, { ...p, alpha: 1 }, ox, oy, sc);
+    const e = edgeCv.getContext("2d");
+    e.drawImage(spriteCv, 0, 0); e.globalCompositeOperation = "source-in"; e.fillStyle = "#2A2825"; e.fillRect(0, 0, w, h);
+    const d = Math.max(1.5, sc * .3), left = Math.round(x - ox), top = Math.round(feet - oy);
+    c.save(); c.imageSmoothingEnabled = false; c.globalAlpha = p.alpha;
+    for (const [dx, dy] of [[-d, 0], [d, 0], [0, -d], [0, d], [-d, -d], [d, -d], [-d, d], [d, d]]) c.drawImage(edgeCv, left + dx, top + dy);
+    c.drawImage(spriteCv, left, top);
+    c.restore();
+  }
+
+  function drawZoo(c, b, L, now, t) {
+    const T = THEMES[S.theme], mid = L.base / 2, run = clockRunning(), Z = run ? L.zooClock : L.zoo, n = S.agents.length;
+    c.fillStyle = T.face; c.fillRect(0, 0, L.base, L.base);
+    const active = S.agents[S.sel];
+    if (active && active.st === "needs") glow(c, L, AMBER, .55 + .45 * Math.abs(Math.sin(t * 2.2)));
+    if (run) drawArch(c, L, T, run, now, t);
+    // One agent at a time. A newly chosen one slides in a little and fades up.
+    if (active) {
+      const moving = n > 1 ? mod(S.sel - S.pos + n / 2, n) - n / 2 : 0, x = mid + moving * Z.sc * 6;
+      const jump = active.st === "needs" ? Math.abs(Math.sin(t * 4)) * Z.sc * 1.8 : active.st === "done" ? Math.abs(Math.sin(t * 3)) * Z.sc : 0;
+      const p = pose(active, t, S.sel); p.alpha = clamp(1 - Math.abs(moving) * 1.3, 0, 1);
+      const feet = Z.feet - jump;
+      drawCharacter(c, active.costume, p, x, feet, Z.sc);
+      if (active.st === "needs") drawBubble(c, x - Z.sc * 5, feet - Z.sc * 9.5, "question", AMBER, "#1A1200", Z.sc / 7, 1);
+      text(c, active.name, mid, Z.nameY, Z.name, 700, T.ink, "center", Z.textW);
+      const needs = active.st === "needs";
+      text(c, active.act, mid, Z.actY, Z.act, 500, needs ? T.amber : T.soft, "center", Z.textW);
+      if (S.connected) {
+        const m = Math.max(0, Math.round((now - active.since) / MIN));
+        text(c, m ? `for ${m} min` : "just now", mid, Z.lineY, Z.line, 500, T.sub, "center", Z.textW);
+      }
+    } else {
+      text(c, "No agents running", mid, L.base * .55, L.zoo.act, 500, T.sub);
+    }
+    if (!run && L.dots) {
+      const d = new Date();
+      text(c, `${pad(d.getHours())}:${pad(d.getMinutes())}`, mid, L.zoo.topY, L.zoo.top, 600, T.sub);
+    }
+    drawAgentDots(c, L, T);
+    if (!S.connected) {
+      c.font = `600 ${L.toast}px ${FONT}`;
+      const label = "Mac offline", w = c.measureText(label).width + L.toast * 2, y = Z.lineY;
+      c.beginPath(); c.roundRect(mid - w / 2, y - L.toast * 1.2, w, L.toast * 1.9, L.toast); c.fillStyle = T.offlineBg; c.fill();
+      text(c, label, mid, y + L.toast * .3, L.toast, 600, T.amber);
+    }
+  }
+  // One dot per agent, in the color of its status: a row on a square screen, along the rim on a round one.
+  function dotPosition(L, i, n) {
+    if (L.dots) {
+      const gap = n > 1 ? Math.min(L.dots.gap, (L.base - 80) / (n - 1)) : 0;
+      return { x: L.base / 2 + (i - (n - 1) / 2) * gap, y: L.dots.y };
+    }
+    const step = n > 1 ? Math.min(.028, .36 / (n - 1)) : 0;
+    return rimPoint(L, .5 - (i - (n - 1) / 2) * step, L.dotsRim.inset, 0);
+  }
+  function drawAgentDots(c, L, T) {
+    const n = S.agents.length, [small, big, ring] = L.dots ? [5, 7.5, 11] : [3.2, 5.5, 8];
+    S.agents.forEach((a, i) => {
+      const p = dotPosition(L, i, n), on = i === S.sel;
+      c.fillStyle = T.st[a.st];
+      c.beginPath(); c.arc(p.x, p.y, on ? big : small, 0, Math.PI * 2); c.fill();
+      if (on) { c.strokeStyle = T.ink; c.lineWidth = 1.5; c.beginPath(); c.arc(p.x, p.y, ring, 0, Math.PI * 2); c.stroke(); }
+    });
+  }
+
+  const dialAngle = (i) => { const n = MODES.length; return (mod(i - S.dial.pos + n / 2, n) - n / 2) * Math.PI * 2 / n; };
+  function drawDial(c, b, L, T, now, t) {
+    const D = L.dial, mid = L.base / 2, n = MODES.length, sel = mod(S.dial.idx, n), m = MODES[sel];
+    c.fillStyle = T.face; c.fillRect(0, 0, L.base, L.base);
+    c.strokeStyle = T.faint; c.lineWidth = 1.5; c.beginPath(); c.arc(mid, mid, D.r, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = S.theme === "mono" ? "#1E1E20" : "#E9E9ED"; c.strokeStyle = T.ink; c.lineWidth = 2;
+    c.beginPath(); c.arc(mid, mid - D.r, D.hi, 0, Math.PI * 2); c.fill(); c.stroke();
+    const run = clockRunning();
+    MODES.forEach((mode, i) => {
+      const a = dialAngle(i), x = mid + D.r * Math.sin(a), y = mid - D.r * Math.cos(a), isSel = i === sel;
+      const blocked = run && (mode.key === "timer" || mode.key === "pomodoro") && mode.key !== run;
+      c.save(); c.globalAlpha = blocked ? .3 : 1;
+      if (!isSel) { c.fillStyle = T.face; c.beginPath(); c.arc(x, y, D.icon * 1.05, 0, Math.PI * 2); c.fill(); }
+      modeIcon(c, mode.key, x, y, D.icon, isSel ? T.ink : T.sub, t, isSel);
+      c.restore();
+      if (run === mode.key) { c.fillStyle = T.ok; c.beginPath(); c.arc(x + D.icon * .8, y - D.icon * .8, D.icon * .2, 0, Math.PI * 2); c.fill(); }
+    });
+    text(c, m.label, mid, D.labelY, D.label, 700, T.ink);
+    const blocked = run && (m.key === "timer" || m.key === "pomodoro") && m.key !== run;
+    const hintNow = now < S.hint.until;
+    let sub = m.about;
+    if (hintNow) sub = S.hint.text;
+    else if (blocked) sub = "pause to switch";
+    else if (run === m.key) sub = `running: ${clockText(run, now)}`;
+    text(c, sub, mid, D.subY, D.sub, 500, hintNow || blocked ? T.amber : T.sub, "center", D.r * 1.55);
+    if (run && run !== m.key && !hintNow && !blocked) text(c, `${run === "timer" ? "Timer" : "Pomodoro"} running: ${clockText(run, now)}`, mid, D.hintY, D.hint, 600, T.ok, "center", D.r * 1.55);
+    else if (!run) text(c, b.caps.knob ? "turn, then tap" : "tap a mode, or swipe", mid, D.hintY, D.hint, 500, T.sub, "center", D.r * 1.55);
+  }
+
+  function drawSettings(c, b, L, T, now) {
+    const G = L.list, mid = L.base / 2;
+    c.fillStyle = T.face; c.fillRect(0, 0, L.base, L.base);
+    if (S.set.page === "pair") {
+      text(c, "Pair with your Mac", mid, L.base * .33, L.dial.label * .75, 700, T.ink, "center", L.base * .8);
+      text(c, "482 913", mid, L.base * .52, L.dial.label * 1.5, 700, T.ink);
+      text(c, "Type this code on your Mac.", mid, L.base * .63, L.dial.sub, 500, T.sub, "center", L.base * .75);
+      text(c, "Sample code. Tap to go back.", mid, L.base * .71, L.dial.hint, 500, T.sub, "center", L.base * .7);
+      return;
+    }
+    const rows = settingsRows(b), sel = rowIndex(rows), v = view[b.id];
+    text(c, S.set.page === "macs" ? "Choose the Mac" : "Settings", mid, G.titleY, G.title, 700, G.wheel ? T.sub : T.ink);
+    if (G.wheel) {
+      rows.forEach((r, i) => {
+        const d = i - v.listPos, y = mid + d * G.rowH, far = Math.abs(d);
+        if (far > 2.4) return;
+        const size = lerp(G.big, G.small, Math.min(1, far)), alpha = clamp(1 - far * .36, .14, 1), hw = Math.sqrt(Math.max(0, 180 * 180 - (y - 180) ** 2)) - 22;
+        const x0 = Math.max(G.x0, mid - hw), x1 = Math.min(G.x1, mid + hw);
+        if (far < .5) { c.fillStyle = S.theme === "mono" ? "#1E1E20" : "#EDEDF0"; c.beginPath(); c.roundRect(x0 - 12, y - G.rowH / 2 + 3, x1 - x0 + 24, G.rowH - 6, 16); c.fill(); }
+        const val = r.val();
+        c.font = `600 ${size}px ${FONT}`; const vw = val ? c.measureText(val).width + 10 : 0;
+        text(c, r.label, x0, y + size * .35, size, far < .5 ? 700 : 500, T.ink, "left", x1 - x0 - vw, alpha);
+        if (val) text(c, val, x1, y + size * .35, size, 600, T.sub, "right", 0, alpha);
+      });
+      text(c, S.set.page === "main" ? "tap to change" : "tap to choose", mid, G.hintY - 9, G.hint, 500, T.sub);
+      text(c, S.set.page === "main" ? "swipe down to leave" : "swipe down to go back", mid, G.hintY + 8, G.hint, 500, T.sub);
+    } else {
+      const rh = listRowH(L, rows.length);
+      rows.forEach((r, i) => {
+        const y = G.y0 + i * rh + rh / 2;
+        if (i) { c.strokeStyle = T.faint; c.lineWidth = 1; c.beginPath(); c.moveTo(G.x0, y - rh / 2); c.lineTo(G.x1, y - rh / 2); c.stroke(); }
+        const val = r.val();
+        c.font = `600 ${G.big}px ${FONT}`; const vw = val ? c.measureText(val).width + 14 : 0;
+        text(c, r.label, G.x0, y + G.big * .35, G.big, 600, T.ink, "left", G.x1 - G.x0 - vw);
+        if (val) text(c, val, G.x1, y + G.big * .35, G.big, 600, T.sub, "right");
+        else if (r.open) text(c, "›", G.x1, y + G.big * .35, G.big * 1.2, 500, T.sub, "right");
+      });
+      if (S.set.page === "macs") text(c, "Swipe down to go back", mid, G.y0 + rows.length * G.rowH + 34, G.small * .8, 500, T.sub);
+    }
+  }
+
+  function drawLock(c, b, L, T, now, t) {
+    const K = S.lock, G = L.lock, mid = L.base / 2, age = now - K.shake;
+    const shake = K.shake && age < 420 ? Math.sin(age / 18) * 10 * (1 - age / 420) : 0;
+    c.fillStyle = T.face; c.fillRect(0, 0, L.base, L.base);
+    if (firstNeeding()) glow(c, L, AMBER, .55 + .45 * Math.abs(Math.sin(t * 2.2)));
+    // A running clock's time stays visible above the keypad.
+    const run = clockRunning();
+    if (run) {
+      const col = run === "pomodoro" ? warm(T.ink, remaining(now)) : T.ink;
+      if (G.topX) text(c, clockText(run, now), G.topX, G.topY, G.top, 600, col, "left");
+      else text(c, clockText(run, now), mid, G.topY, G.top, 600, col);
+    }
+    const msg = lockMessage(now);
+    text(c, msg.text, mid + shake, G.titleY, G.title, 600, msg.alert ? T.amber : T.ink, "center", G.titleW);
+    for (let i = 0; i < 4; i++) {
+      const x = mid + shake + (i - 1.5) * G.dotGap;
+      c.beginPath(); c.arc(x, G.dotsY, G.dotR, 0, Math.PI * 2);
+      if (i < K.entry.length) { c.fillStyle = T.ink; c.fill(); }
+      else { c.strokeStyle = i === K.entry.length ? T.ink : T.sub; c.lineWidth = 1.6; c.stroke(); }
+    }
+    // The whole keypad, on every board.
+    const waiting = now < K.until, x0 = mid - G.keyW * 1.5;
+    LOCK_KEYS.forEach((key, i) => {
+      if (!key) return;
+      const x = x0 + G.keyW * (i % 3 + .5), y = G.keyTop + G.keyH * (Math.floor(i / 3) + .5);
+      c.globalAlpha = waiting ? .3 : 1;
+      if (key === "del") {
+        // A delete key: a tag with a cross.
+        const w = G.key * .62, h = G.key * .42;
+        c.strokeStyle = T.ink; c.lineWidth = 2; c.lineJoin = "round";
+        c.beginPath(); c.moveTo(x - w, y); c.lineTo(x - w * .45, y - h); c.lineTo(x + w, y - h); c.lineTo(x + w, y + h); c.lineTo(x - w * .45, y + h); c.closePath(); c.stroke();
+        c.beginPath(); c.moveTo(x - h * .35, y - h * .45); c.lineTo(x + h * .55, y + h * .45); c.moveTo(x + h * .55, y - h * .45); c.lineTo(x - h * .35, y + h * .45); c.stroke();
+      } else {
+        c.fillStyle = T.faint; c.beginPath(); c.arc(x, y, G.keyR, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 1;
+        text(c, key, x, y + G.key * .36, G.key, 600, T.ink, "center", 0, waiting ? .3 : 1);
+      }
+      c.globalAlpha = 1;
+    });
+  }
+
+  function drawToast(c, L, now) {
+    if (now >= S.toast.until) return;
+    const mid = L.base / 2, T = THEMES[S.theme];
+    c.font = `600 ${L.toast}px ${FONT}`;
+    const w = c.measureText(S.toast.text).width + L.toast * 2, h = L.toast * 2.1;
+    c.beginPath(); c.roundRect(mid - w / 2, L.toastY - h / 2, w, h, h / 2); c.fillStyle = T.toastBg; c.fill();
+    text(c, S.toast.text, mid, L.toastY + L.toast * .35, L.toast, 600, T.toastInk);
+  }
+
+  const ctxs = { knob: $("cv-knob").getContext("2d"), square: $("cv-square").getContext("2d") };
+  function drawBoard(id, now, t) {
+    const b = BOARDS[id], L = LAYOUTS[b.shape], c = ctxs[id], SS = c.canvas.width / b.w, k = b.w / L.base;
+    const orient = id === "square" ? shownOrient(now) : 0;
+    c.setTransform(SS, 0, 0, SS, 0, 0);
+    c.fillStyle = THEMES[S.theme].face; c.fillRect(0, 0, b.w, b.h);
+    c.save();
+    c.translate(b.w / 2, b.h / 2); c.rotate(-orient * Math.PI / 180); c.translate(-b.w / 2, -b.h / 2);
+    c.scale(k, k);
+    // AMOLED screens only: a slow shift of up to 2 pixels, against burn-in.
+    if (b.panel === "amoled") c.translate(Math.round(2 * Math.sin(t / 47)), Math.round(2 * Math.sin(t / 61)));
+    const T = THEMES[S.theme];
+    if (S.lock.open && S.lock.pad) drawLock(c, b, L, T, now, t);
+    else if (S.dial.open) drawDial(c, b, L, T, now, t);
+    else if (S.mode === "zoo") drawZoo(c, b, L, now, t);
+    else if (S.mode === "settings") drawSettings(c, b, L, T, now);
+    else drawClock(c, b, L, T, S.mode, now, t);
+    if (S.lock.open && S.lock.pad) drawStatus(c, b, L, T, "list", t);
+    else if (!S.dial.open) drawStatus(c, b, L, T, S.mode === "settings" ? "list" : S.mode === "zoo" ? (clockRunning() ? "arc" : "zoo") : "clock", t);
+    drawToast(c, L, now);
+    c.restore();
+  }
+
+  // ================= The loop =================
+  let lastFrame = performance.now();
+  function frame(now) {
+    const dt = Math.min(100, now - lastFrame); lastFrame = now;
+    const t = (now - t0) / 1000, ease = 1 - Math.exp(-dt / 70);
+    // Glide the wheels and carousels.
+    const n = S.agents.length;
+    if (n) { const goal = nearestAgentStep(S.pos, S.sel, n); S.pos = Math.abs(goal - S.pos) < .002 ? mod(S.sel, n) : S.pos + (goal - S.pos) * ease; }
+    S.dial.pos += (S.dial.idx - S.dial.pos) * ease;
+    for (const id of ["knob", "square"]) { const goal = rowIndex(settingsRows(BOARDS[id])); view[id].listPos += (goal - view[id].listPos) * ease; }
+    if (S.dial.open && now > S.dial.until) S.dial.open = false;
+    // The Pomodoro runs out: back to its face, wherever you are.
+    if (S.p.state === "running" && remaining(now) <= 0) {
+      S.p.state = "done"; S.p.remaining = 0; S.dial.open = false; S.mode = "pomodoro";
+      sendToMac("Stop the Toggl entry"); feedback("alarm"); announce("Time's up");
+    }
+    // Auto-scroll: the next agent every 8 s; a manual pick holds for 20 s; agents that need you come first.
+    if (S.mode === "zoo" && !S.dial.open && now - S.pickedAt > 20000) {
+      const need = firstNeeding();
+      if (need && S.agents[S.sel].st !== "needs" && now - S.pickedAt > 20000) S.sel = S.agents.indexOf(need);
+      else if (S.autoscroll && n > 1) {
+        if (now > S.nextScroll) {
+          if (S.nextScroll) S.sel = mod(S.sel + 1, n);
+          S.nextScroll = now + 8000;
+        }
+      }
+    }
+    updateTurn(now);
+    if (S.lock.open && S.lock.pad && now > S.lock.padUntil) lockSleep();
+    drawBoard("knob", now, t); drawBoard("square", now, t);
+    requestAnimationFrame(frame);
+  }
+
+  // ================= Touch =================
+  function toUX(id, e) {
+    const cv = ctxs[id].canvas, b = BOARDS[id], r = cv.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2, scale = cv.offsetWidth / b.w;
+    const dx = (e.clientX - cx) / scale, dy = (e.clientY - cy) / scale;
+    const th = (id === "square" ? S.tilt : 0) * Math.PI / 180, o = (id === "square" ? S.orient[0] : 0) * Math.PI / 180;
+    const px = dx * Math.cos(th) + dy * Math.sin(th), py = -dx * Math.sin(th) + dy * Math.cos(th);
+    return { x: px * Math.cos(o) - py * Math.sin(o) + b.w / 2, y: px * Math.sin(o) + py * Math.cos(o) + b.h / 2 };
+  }
+  function wireTouch(id) {
+    const cv = ctxs[id].canvas, b = BOARDS[id], k = b.w / LAYOUTS[b.shape].base;
+    let press = null;
+    cv.addEventListener("pointerdown", (e) => {
+      cv.setPointerCapture(e.pointerId);
+      const p = toUX(id, e);
+      press = { p, moved: false, held: false, timer: setTimeout(() => { if (press && !press.moved) { press.held = true; hold(id, performance.now()); } }, 700) };
+    });
+    cv.addEventListener("pointermove", (e) => {
+      if (!press) return;
+      const p = toUX(id, e);
+      if (Math.hypot(p.x - press.p.x, p.y - press.p.y) > 14 * k) press.moved = true;
+    });
+    const finish = (e, cancelled) => {
+      if (!press) return;
+      clearTimeout(press.timer);
+      const p = toUX(id, e), dx = p.x - press.p.x, dy = p.y - press.p.y, held = press.held, moved = press.moved, start = press.p;
+      press = null;
+      if (cancelled || held) return;
+      const now = performance.now();
+      if (moved && Math.hypot(dx, dy) > 36 * k) {
+        if (Math.abs(dy) > Math.abs(dx)) swipe(id, dy < 0 ? "up" : "down", now);
+        else swipe(id, dx < 0 ? "left" : "right", now);
+      } else if (!moved) tap(id, start.x, start.y, now);
+    };
+    cv.addEventListener("pointerup", (e) => finish(e, false));
+    cv.addEventListener("pointercancel", (e) => finish(e, true));
+  }
+  wireTouch("knob"); wireTouch("square");
+
+  // ================= The knob's ring =================
+  const ring = $("ring");
+  let ringDeg = 0, ringDrag = null;
+  const DETENT = 15;
+  function knobStep(dir) { ringDeg += dir * DETENT; ring.style.transform = `rotate(${ringDeg}deg)`; turn("knob", dir, performance.now()); }
+  const ringAngle = (e) => { const r = ring.getBoundingClientRect(); return Math.atan2(e.clientY - r.top - r.height / 2, e.clientX - r.left - r.width / 2) * 180 / Math.PI; };
+  ring.addEventListener("pointerdown", (e) => { ring.setPointerCapture(e.pointerId); ringDrag = { last: ringAngle(e), acc: 0 }; ring.classList.add("dragging"); });
+  ring.addEventListener("pointermove", (e) => {
+    if (!ringDrag) return;
+    const a = ringAngle(e); ringDrag.acc += angleDiff(a, ringDrag.last); ringDrag.last = a;
+    while (Math.abs(ringDrag.acc) >= DETENT) { const dir = Math.sign(ringDrag.acc); knobStep(dir); ringDrag.acc -= dir * DETENT; }
+  });
+  const ringEnd = () => { ringDrag = null; ring.classList.remove("dragging"); };
+  ring.addEventListener("pointerup", ringEnd); ring.addEventListener("pointercancel", ringEnd);
+  let wheelAcc = 0;
+  $("cv-knob").parentElement.addEventListener("wheel", (e) => {
+    e.preventDefault(); wheelAcc += e.deltaY;
+    while (Math.abs(wheelAcc) >= 40) { const dir = Math.sign(wheelAcc); knobStep(dir); wheelAcc -= dir * 40; }
+  }, { passive: false });
+
+  // ================= Panel =================
+  document.querySelectorAll("[data-act]").forEach((el) => el.addEventListener("click", () => act(el.dataset.act)));
+  function act(name) {
+    const now = performance.now(), mid = BOARDS.knob.w / 2;
+    if (name === "turn1") knobStep(1);
+    else if (name === "turn-1") knobStep(-1);
+    else if (name === "tap") tap("knob", mid, mid, now);
+    else if (name === "hold") hold("knob", now);
+    else if (name === "skip") {
+      if (S.t.state === "running") S.t.start -= 5 * MIN;
+      else if (S.t.state === "paused") S.t.session += 5 * MIN;
+      if (S.p.state === "running") { S.p.remaining = Math.max(0, remaining(now) - 5 * MIN); S.p.last = now; }
+      else if (S.p.state === "paused") S.p.remaining = Math.max(MIN, S.p.remaining - 5 * MIN);
+    } else swipe("knob", name, now);
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, button")) return;
+    const map = { ArrowRight: "turn1", ArrowLeft: "turn-1", ArrowUp: "up", ArrowDown: "down", " ": "tap", h: "hold", H: "hold" };
+    if (map[e.key]) { e.preventDefault(); act(map[e.key]); }
+  });
+  document.querySelectorAll("[data-tilt]").forEach((el) => el.addEventListener("click", () => setTilt(+el.dataset.tilt)));
+  $("tilt").addEventListener("input", (e) => setTilt(+e.target.value));
+  $("flat").addEventListener("change", (e) => { S.flat = e.target.checked; log("input", "Square", S.flat ? "Reports: lying flat" : "Reports: upright"); checkOrient(); });
+  $("needs").addEventListener("click", () => needsYou(performance.now()));
+  $("answer").addEventListener("click", () => { const a = firstNeeding(); if (a) answerAgent(a, performance.now()); });
+  document.querySelectorAll("[data-left]").forEach((el) => el.addEventListener("click", () => {
+    const now = performance.now();
+    if (S.t.state === "running") return toast("Pause the Timer first");
+    if (S.mode === "timer") S.mode = "pomodoro";
+    if (S.p.state !== "running") { S.p.state = "running"; sendToMac(`Start a Toggl entry: ${S.task || "Untitled"}`); }
+    S.p.remaining = +el.dataset.left * MIN; S.p.total = Math.max(S.p.total, S.p.remaining); S.p.last = now;
+  }));
+  $("code-save").addEventListener("click", () => {
+    const value = $("code").value, note = $("code-msg");
+    if (!/^[0-9]{4}$/.test(value)) { note.textContent = "Enter 4 digits."; return; }
+    if (!S.connected) { note.textContent = "Connect the Mac first."; return; }
+    macSetLockCode(value);
+    note.textContent = S.lock.open ? "Saved. The new code unlocks the board." : "Saved. The board locks only when you choose Lock.";
+  });
+  $("code-clear").addEventListener("click", () => {
+    const note = $("code-msg");
+    if (!S.connected) { note.textContent = "Connect the Mac first."; return; }
+    macRemoveLockCode(); $("code").value = ""; note.textContent = "Removed. Lock needs a code again.";
+  });
+  $("batt").addEventListener("input", (e) => { S.battery = +e.target.value; $("batt-out").textContent = `${S.battery}%`; });
+  $("charging").addEventListener("change", (e) => { S.charging = e.target.checked; });
+  $("mac").addEventListener("change", (e) => {
+    S.connected = e.target.checked;
+    log("mac", "Link", S.connected ? "Mac connected" : "Mac disconnected");
+    if (S.connected && S.queued) { log("mac", "To Mac", `Send ${S.queued} saved change${S.queued > 1 ? "s" : ""}`); S.queued = 0; }
+  });
+  document.querySelectorAll(".side").forEach((el) => el.addEventListener("click", () => {
+    const btn = el.dataset.btn, now = performance.now();
+    log("input", "Square", `Reports: ${btn} button`);
+    if (S.lock.open) { if (!lockWake(now)) feedback("bump"); return; }
+    if (btn === "PWR") {
+      if (S.mode === "settings") settingsBack();
+      else { S.dial.open = false; S.set = { page: "main", key: "bright", from: S.mode }; S.mode = "settings"; snapLists(); feedback("tap"); }
+    } else {
+      S.vol = clamp(S.vol + (btn === "User" ? 1 : -1), 0, 10);
+      toast(S.vol ? `Volume ${S.vol}` : "Muted"); if (S.vol) feedback("tick");
+    }
+  }));
+
+  window.__bento = { S, BOARDS, LAYOUTS, MODES, turn, tap, hold, swipe, setTilt, needsYou, toUX, pomoFraction, statusFor, settingsRows, warm };
+  applyBrightness();
+  log("output", "UX", "Open Timer");
+  const begin = () => requestAnimationFrame(frame);
+  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(begin, begin);
+})();
+</script>
+</body>
+</html>

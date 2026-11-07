@@ -1,0 +1,22 @@
+# Never commit credentials or the owner's board details
+secrets.h
+boards.local.md
+backup/
+
+# Firmware build output and downloaded components
+firmware/build*/
+firmware/managed_components/
+firmware/sdkconfig.old
+firmware/test-output/
+
+# Python
+__pycache__/
+*.pyc
+zookeeper/.venv/
+zookeeper/build/
+
+# Preview checks
+node_modules/
+preview/test-output/
+
+.DS_Store
