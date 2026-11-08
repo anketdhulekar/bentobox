@@ -1,0 +1,81 @@
+#!/bin/bash
+# Which chip is on USB, and on which port. Bento runs on a board's ESP32-S3: its own USB (Espressif USB-Serial/JTAG)
+# reports the chip's MAC, which boards.local.md names. A USB-to-serial converter (a CH340 and the like) is some other
+# chip: on the knob, it's the second ESP32, reached when the USB-C plug is in the other way round at the knob end.
+# tools/bento flash needs the ESP32-S3.
+#
+#   tools/which-chip           what's connected now
+#   tools/which-chip --watch   checks twice a second and prints each change, until Ctrl-C: plug in, unplug and turn
+#                              the plug while it runs
+#
+# It only reads the Mac's USB registry: it never opens a port, so it can't restart a board.
+set -u
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LOCAL="$ROOT/boards.local.md"
+
+# One line per USB device: vendor, product, name, serial number, port, split by the unit separator (a tab would run
+# two together when a field is empty). A device's port is in its subtree, before the next device.
+devices() {
+    ioreg -r -c IOUSBHostDevice -l -w0 2>/dev/null | awk '
+        function emit() { if (vid != "") printf "%s\037%s\037%s\037%s\037%s\n", vid, pid, name, serial, port; vid = pid = name = serial = port = "" }
+        function quoted(s) { sub(/^[^=]*= "/, "", s); sub(/".*$/, "", s); return s }
+        /\+-o .*<class IOUSBHostDevice/ { emit(); next }
+        /"idVendor" = / && vid == "" { vid = $NF }
+        /"idProduct" = / && pid == "" { pid = $NF }
+        /"USB Product Name" = / && name == "" { name = quoted($0) }
+        /"USB Serial Number" = / && serial == "" { serial = quoted($0) }
+        /"IOCalloutDevice" = / && port == "" { port = quoted($0) }
+        END { emit() }'
+}
+
+# The board boards.local.md lists for a MAC, such as knob-lcd-1.8, or nothing.
+board_for() {
+    [ -f "$LOCAL" ] || return
+    awk -F'|' -v mac="$1" 'tolower($0) ~ mac { gsub(/[ \t]/, "", $2); print $2; exit }' "$LOCAL"
+}
+
+report() {
+    local found=0 vid pid name serial port mac board
+    while IFS=$'\037' read -r vid pid name serial port; do
+        case "$vid:$pid" in
+        12346:4097) # 0x303A:0x1001, Espressif USB-Serial/JTAG: an ESP32-S3's own USB, also in its download mode
+            found=1
+            mac=$(printf '%s' "$serial" | tr 'A-F' 'a-f')
+            board=$(board_for "$mac")
+            echo "ESP32-S3, Bento's chip: ${board:-a board not in boards.local.md} (MAC $mac), on ${port:-no port yet}"
+            if [ -n "$board" ] && [ -n "$port" ]; then
+                echo "  Ready to flash: tools/bento flash $board --port $port"
+            elif [ -z "$board" ]; then
+                echo "  Not in boards.local.md: don't flash it until you know which board it is."
+            fi
+            ;;
+        6790:29987 | 6790:21795 | 6790:21972 | 4292:60000) # WCH CH340, CH341, CH9102; Silicon Labs CP210x
+            found=1
+            echo "A USB-to-serial converter (${name:-unnamed}), on ${port:-no port yet}: not an ESP32-S3."
+            echo "  On the knob, that's its second ESP32. Unplug the cable at the knob, turn the plug over, and plug it back in."
+            ;;
+        esac
+    done < <(devices)
+    [ "$found" = 0 ] && echo "No board on USB."
+    return 0
+}
+
+case "${1:-}" in
+--watch)
+    last=""
+    while :; do
+        now=$(report)
+        if [ "$now" != "$last" ]; then
+            echo "--- $(date +%H:%M:%S)"
+            echo "$now"
+            last=$now
+        fi
+        sleep 0.5
+    done
+    ;;
+"") report ;;
+*)
+    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2
+    ;;
+esac

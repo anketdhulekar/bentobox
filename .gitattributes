@@ -1,0 +1,6 @@
+# Generated from tools/gen_fonts.py and tools/gen_icons.py: kept in the repo so the firmware builds without Python, but
+# not worth reading in a diff.
+firmware/ux/assets/fonts.c linguist-generated=true -diff
+firmware/ux/assets/fonts.h linguist-generated=true
+firmware/ux/assets/icons.c linguist-generated=true -diff
+firmware/ux/assets/icons.h linguist-generated=true

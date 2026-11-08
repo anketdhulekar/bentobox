@@ -1,0 +1,21 @@
+menu "Bento"
+
+    config BENTO_DEBUG_INTERFACE
+        bool "Debug interface over USB (development only)"
+        default n
+        help
+            The test harness talks to the firmware over USB Serial/JTAG (hal_debug_read and hal_debug_write).
+            It can do anything, including unlock a locked board and dump what's on screen, for whoever has a USB
+            cable: never use it in the firmware you live with. With it off, the firmware never reads USB input.
+            tools/bento build|flash <board> --debug turns it on for one build, in firmware/build-<board>-debug,
+            without changing the sdkconfig.
+
+    config BENTO_HW_TEST
+        bool "Run the hardware test instead of the UX"
+        default n
+        help
+            platform/esp32/hw_test.c: a color pattern, touch dots, a knob counter, feedback on input, and a log of
+            Bluetooth and motion. For bring-up of a new board. tools/bento build <board> --hw-test does the same
+            without changing the sdkconfig.
+
+endmenu

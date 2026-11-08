@@ -1,0 +1,5 @@
+# The font and icon generators (tools/gen_fonts.py, tools/gen_icons.py) and the simulator's sharp build.
+#   python3 -m venv tools/.venv && tools/.venv/bin/pip install -r tools/requirements.txt
+# Pillow needs its raqm layout engine for the fonts' shaping: Homebrew's `brew install libraqm` provides it.
+fonttools==4.68.0
+pillow==13.0.0

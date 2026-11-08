@@ -1,0 +1,8 @@
+# Name,   Type, SubType, Offset,   Size
+# 16 MB flash on both boards. The app can grow to 6 MB, which also has to fit in the 8 MB PSRAM it runs from
+# (CONFIG_SPIRAM_XIP_FROM_PSRAM), and the rest of the flash stays free. NVS holds the unsent Toggl messages, the
+# cached lists and the pairing keys. It moved from 0x9000, so a board starts clean rather than reading another
+# firmware's settings, and that old area is unused.
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  6M,
+nvs,      data, nvs,     0x610000, 256K,

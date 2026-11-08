@@ -1,0 +1,6 @@
+# The desktop app's dependencies, pinned: install.py setup installs exactly these into desktop/.venv.
+bleak==3.0.2
+pyobjc-core==13.0
+pyobjc-framework-Cocoa==13.0
+pyobjc-framework-CoreBluetooth==13.0
+pyobjc-framework-libdispatch==13.0

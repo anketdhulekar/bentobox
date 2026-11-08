@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""Bento's tools: build, flash, back up and watch a board, start a new one, and run the simulator.
+
+   tools/bento build <board> [--debug] [--hw-test]
+   tools/bento flash <board> [--debug] [--port PORT] [--no-backup-check]
+   tools/bento backup <board> [--port PORT]
+   tools/bento monitor <board> [--debug] [--port PORT]
+   tools/bento new-board <name>
+   tools/bento sim <board> [arguments for the simulator]
+   tools/bento test <board or sim> [options]          the end-to-end tests (test --help)
+   tools/bento perf <board or sim> [options]          each user action timed, against a baseline (perf --help)
+
+It needs only Python's standard library, and loads ESP-IDF itself through idf-env.sh at the repo's root.
+
+--debug builds in firmware/build-<board>-debug with the debug interface over USB, which the device tests need. It can
+unlock a locked board for anyone with a cable: flash a build without --debug for everyday use.
+"""
+import argparse
+import datetime
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FIRMWARE = os.path.join(ROOT, "firmware")
+BOARDS = os.path.join(FIRMWARE, "boards")
+IDF_ENV = os.path.join(ROOT, "idf-env.sh")
+BOARDS_LOCAL = os.path.join(ROOT, "boards.local.md")
+BACKUPS = os.path.join(ROOT, "backup")
+
+FLASH_BYTES = 16 * 1024 * 1024
+PORT_GLOB = "/dev/cu.usbmodem*"  # the ESP32-S3's own USB. The knob's other plug direction gives usbserial: a second chip.
+MAC_RE = re.compile(r"\b(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}\b")
+
+
+class Refusal(Exception):
+    """Stop with this message, and change nothing."""
+
+
+def known_boards():
+    return sorted(n for n in os.listdir(BOARDS) if not n.startswith("_") and os.path.isfile(os.path.join(BOARDS, n, "board_info.c")))
+
+
+def check_board(board):
+    if board not in known_boards():
+        raise Refusal('No board called "%s". Boards: %s' % (board, ", ".join(known_boards())))
+
+
+def in_idf(command, cwd=FIRMWARE, capture=False):
+    """Run a command with ESP-IDF loaded. Returns the exit code, or (code, output) with capture."""
+    script = '. "$0" >/dev/null || exit 1; exec "$@"'
+    args = ["bash", "-c", script, IDF_ENV] + command
+    if capture:
+        done = subprocess.run(args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        return done.returncode, done.stdout
+    return subprocess.call(args, cwd=cwd)
+
+
+def build_dir(board, debug=False):
+    return "build-" + board + ("-debug" if debug else "")
+
+
+def idf_py(board, *rest, hw_test=None, debug=False):
+    command = ["idf.py", "-B", build_dir(board, debug), "-DBOARD=" + board, "-DBENTO_FORCE_DEBUG=" + ("ON" if debug else "OFF")]
+    if hw_test is not None:
+        command.append("-DBENTO_FORCE_HW_TEST=" + ("ON" if hw_test else "OFF"))
+    return command + list(rest)
+
+
+# ---- Which board is plugged in ----------------------------------------------------------------------------------
+
+
+def expected_mac(board, path=BOARDS_LOCAL):
+    """The MAC listed for this board in boards.local.md: the first MAC on a line naming the board. None if none."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return None
+    for line in lines:
+        # A whole-word match, so "knob-lcd-1.8" doesn't match "knob-lcd-1.85".
+        if re.search(r"(?<![\w.-])" + re.escape(board) + r"(?![\w.-])", line):
+            found = MAC_RE.search(line)
+            if found:
+                return found.group(0).lower().replace("-", ":")
+    return None
+
+
+def no_entry_message(board):
+    return (
+        "Refusing: no MAC for %s in boards.local.md, so nothing proves this is the right board.\n"
+        "All the boards are ESP32-S3, so the chip alone proves nothing. To add it:\n"
+        "  1. Plug in the one board, and find its port: ls %s\n"
+        "  2. Read its MAC:  . ./idf-env.sh && esptool.py --port <port> read_mac\n"
+        "  3. If you're sure which board that is, add a line to boards.local.md at the repo root (git ignores it):\n"
+        "     | %s | aa:bb:cc:dd:ee:ff |" % (board, PORT_GLOB, board)
+    )
+
+
+def find_port(given):
+    if given:
+        return given
+    ports = sorted(glob.glob(PORT_GLOB))
+    if not ports:
+        raise Refusal(
+            "No board found at %s. Is it plugged in? The knob's USB-C plug reaches another chip one way round: "
+            "if you see /dev/cu.usbserial-* instead, flip it at the knob end." % PORT_GLOB
+        )
+    if len(ports) > 1:
+        raise Refusal("More than one board is plugged in (%s). Say which with --port." % ", ".join(ports))
+    return ports[0]
+
+
+def parse_read_mac(output):
+    found = re.search(r"^MAC:\s*(" + MAC_RE.pattern + r")", output, re.MULTILINE)
+    return found.group(1).lower().replace("-", ":") if found else None
+
+
+def check_connected_board(board, port):
+    """Reads the chip's MAC with esptool and refuses unless it's this board's. This restarts the board."""
+    expected = expected_mac(board)
+    if not expected:
+        raise Refusal(no_entry_message(board))
+    code, output = in_idf(["esptool.py", "--port", port, "read_mac"], capture=True)
+    connected = parse_read_mac(output) if code == 0 else None
+    if not connected:
+        raise Refusal("Refusing: couldn't read the MAC on %s:\n%s" % (port, output))
+    if connected != expected:
+        raise Refusal(
+            "Refusing: the board on %s has MAC %s, but boards.local.md says %s has %s. "
+            "This is a different board. Plug in the right one, or fix the file if it's wrong." % (port, connected, board, expected)
+        )
+    print("%s has the MAC boards.local.md lists for %s." % (port, board))
+
+
+# ---- Commands ---------------------------------------------------------------------------------------------------
+
+
+def size_report(board, debug=False):
+    """Prints binary size, partition use and static internal RAM from the finished build."""
+    build = os.path.join(FIRMWARE, build_dir(board, debug))
+    bin_path = os.path.join(build, "bento.bin")
+    if not os.path.exists(bin_path):
+        return
+    app_bytes = os.path.getsize(bin_path)
+    partition_bytes = None
+    with open(os.path.join(FIRMWARE, "partitions.csv"), encoding="utf-8") as f:
+        for line in f:
+            fields = [x.strip() for x in line.split(",")]
+            if fields[0] == "factory" and fields[4].endswith("M"):
+                partition_bytes = int(fields[4][:-1]) * 1024 * 1024
+    print("\n%s" % board)
+    if partition_bytes:
+        print("  App binary:    %d bytes, %.1f%% of the %d MB app partition" % (app_bytes, 100 * app_bytes / partition_bytes, partition_bytes // (1024 * 1024)))
+    else:
+        print("  App binary:    %d bytes" % app_bytes)
+    code, output = in_idf(["python", "-m", "esp_idf_size", "--format", "json", os.path.join(build, "bento.map")], capture=True)
+    if code != 0:
+        return
+    try:
+        size = json.loads(output[output.index("{"):])
+    except ValueError:
+        return
+    print(
+        "  Internal RAM:  %d bytes static, of %d (.data %d, .bss %d, code %d)"
+        % (size["used_diram"], size["diram_total"], size["diram_data"], size["diram_bss"], size["diram_text"] + size["diram_vectors"])
+    )
+    print("  PSRAM:         %d bytes of code and read-only data load here at startup" % (size["flash_code"] + size["flash_rodata"]))
+
+
+def cmd_build(args):
+    check_board(args.board)
+    command = idf_py(args.board, "build", hw_test=args.hw_test, debug=args.debug)
+    code = in_idf(command)
+    if code == 0:
+        size_report(args.board, args.debug)
+    return code
+
+
+def cmd_flash(args):
+    check_board(args.board)
+    if not expected_mac(args.board):
+        raise Refusal(no_entry_message(args.board))  # before anything touches the port
+    if not args.no_backup_check and not glob.glob(os.path.join(BACKUPS, args.board + "-*.bin")):
+        raise Refusal(
+            "Refusing: no backup of %s in backup/. Back a board up before the first flash of new firmware: "
+            "tools/bento backup %s. If a backup exists elsewhere, use --no-backup-check." % (args.board, args.board)
+        )
+    port = find_port(args.port)
+    check_connected_board(args.board, port)
+    return in_idf(idf_py(args.board, "-p", port, "flash", debug=args.debug))
+
+
+def cmd_backup(args):
+    check_board(args.board)
+    if not expected_mac(args.board):
+        raise Refusal(no_entry_message(args.board))  # a backup under the wrong board's name is worse than none
+    stamp = datetime.date.today().isoformat()
+    target = os.path.join(BACKUPS, "%s-%s.bin" % (args.board, stamp))
+    if os.path.exists(target):
+        raise Refusal("Refusing: %s already exists, and a backup is never overwritten." % target)
+    port = find_port(args.port)
+    check_connected_board(args.board, port)
+    os.makedirs(BACKUPS, exist_ok=True)
+    partial = target + ".part"
+    if os.path.exists(partial):
+        os.remove(partial)
+    code = in_idf(["esptool.py", "--port", port, "read_flash", "0", hex(FLASH_BYTES), partial], cwd=ROOT)
+    if code != 0:
+        return code
+    if os.path.getsize(partial) != FLASH_BYTES:
+        raise Refusal("The backup in %s is the wrong size. Keep it for a look, but don't trust it." % partial)
+    os.link(partial, target)  # fails, rather than overwrites, if the name appeared meanwhile
+    os.remove(partial)
+    print("Saved %s" % target)
+    return 0
+
+
+def cmd_monitor(args):
+    check_board(args.board)
+    return in_idf(idf_py(args.board, "-p", find_port(args.port), "monitor", debug=args.debug))
+
+
+def cmd_new_board(args):
+    name = args.name
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", name):
+        raise Refusal('A board\'s name is lowercase letters, digits, dots and dashes, like "amoled-2.16".')
+    target = os.path.join(BOARDS, name)
+    if os.path.exists(target):
+        raise Refusal("%s already exists." % target)
+    shutil.copytree(os.path.join(BOARDS, "_template"), target)
+    for file_name in os.listdir(target):
+        path = os.path.join(target, file_name)
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text.replace("BOARD_NAME", name))
+    print("Created firmware/boards/%s. Fill in its facts from the board's schematic; docs/ADDING-A-BOARD.md has the steps." % name)
+    return 0
+
+
+def cmd_sim(args, rest):
+    check_board(args.board)
+    return subprocess.call(["sh", os.path.join(FIRMWARE, "sim", "run.sh"), args.board] + rest, cwd=ROOT)
+
+
+def tool_python():
+    """The ESP-IDF Python, which has pyserial for talking to a board, or this one. As in idf-env.sh: IDF_PYTHON_ENV_PATH
+    if it's set, and otherwise the newest one installed for ESP-IDF 5.5."""
+    env = os.environ.get("IDF_PYTHON_ENV_PATH")
+    if env and os.path.exists(os.path.join(env, "bin", "python")):
+        return os.path.join(env, "bin", "python")
+    found = sorted(glob.glob(os.path.expanduser("~/.espressif/python_env/idf5.5_py3.*_env/bin/python")))
+    return found[-1] if found else sys.executable
+
+
+def cmd_test(args, rest):
+    """tools/device_test.py: the end-to-end tests."""
+    return subprocess.call([tool_python(), os.path.join(ROOT, "tools", "device_test.py"), args.target] + rest)
+
+
+def cmd_perf(args, rest):
+    """tools/perf_test.py: each user action timed, against a baseline."""
+    return subprocess.call([tool_python(), os.path.join(ROOT, "tools", "perf_test.py"), args.target] + rest)
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="bento", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    build = commands.add_parser("build", help="build a board's firmware in firmware/build-<board>")
+    build.add_argument("board")
+    build.add_argument("--debug", action="store_true", help="with the debug interface, for the device tests (never for daily use)")
+    build.add_argument("--hw-test", action="store_true", help="run the hardware test instead of the UX")
+
+    flash = commands.add_parser("flash", help="flash a board, if the connected chip's MAC is that board's")
+    flash.add_argument("board")
+    flash.add_argument("--debug", action="store_true", help="flash the build with the debug interface, for the device tests")
+    flash.add_argument("--port")
+    flash.add_argument("--no-backup-check", action="store_true", help="flash even with no backup of this board in backup/")
+
+    backup = commands.add_parser("backup", help="read the whole flash to backup/<board>-<date>.bin")
+    backup.add_argument("board")
+    backup.add_argument("--port")
+
+    monitor = commands.add_parser("monitor", help="watch a board's log (this restarts it)")
+    monitor.add_argument("board")
+    monitor.add_argument("--debug", action="store_true", help="the debug build's symbols")
+    monitor.add_argument("--port")
+
+    new_board = commands.add_parser("new-board", help="start firmware/boards/<name> from the template")
+    new_board.add_argument("name")
+
+    sim = commands.add_parser("sim", help="run the real UX on the Mac at a board's size and shape")
+    sim.add_argument("board")
+
+    test = commands.add_parser("test", add_help=False, help="end-to-end tests on a board or the simulator (test --help lists the options)")
+    test.add_argument("target", nargs="?", default="--help")
+
+    perf = commands.add_parser("perf", add_help=False, help="time each user action on a board or the simulator, against a baseline (perf --help)")
+    perf.add_argument("target", nargs="?", default="--help")
+
+    args, rest = parser.parse_known_args()
+    if rest and args.command not in ("sim", "test", "perf"):
+        parser.error("unrecognized arguments: " + " ".join(rest))
+    try:
+        if args.command == "sim":
+            return cmd_sim(args, rest)
+        if args.command == "test":
+            return cmd_test(args, rest)
+        if args.command == "perf":
+            return cmd_perf(args, rest)
+        handlers = {"build": cmd_build, "flash": cmd_flash, "backup": cmd_backup, "monitor": cmd_monitor, "new-board": cmd_new_board}
+        return handlers[args.command](args)
+    except Refusal as refusal:
+        print(refusal, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

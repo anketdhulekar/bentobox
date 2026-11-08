@@ -2,14 +2,12 @@
 
 Bento is organized so that a new board is mostly a table of facts. The screens and modes don't change unless the board brings a screen shape Bento hasn't seen.
 
-This describes the target design. The firmware isn't written yet, so the names and code below may change as it's built.
-
 ## What you add
 
 | The new board has | What you add |
 |---|---|
 | A round or square screen, and chips Bento already supports | `firmware/boards/<board>/` |
-| A chip Bento doesn't support yet | Also `firmware/drivers/<chip>/` |
+| A chip Bento doesn't support yet | Also `firmware/drivers/<chip>/`, an ESP-IDF component that fills in one of the structs in `driver_api.h` |
 | A new screen shape, such as a wide rectangle | Also `firmware/ux/layouts/<shape>` |
 | A different chip family from the ESP32 | Also `firmware/platform/<family>/` |
 
@@ -19,12 +17,14 @@ Many AMOLED boards share the same display, touch and power chips, so most new bo
 
 ```text
 firmware/boards/<board>/
-  board.c            the board's facts: screen, features, pins and chips
+  board_info.c       the portable facts the UX reads: screen, features. The simulator compiles it too
+  board.c            the hardware facts: pins, which chips, how feedback maps to vibration or sound
+  board.cmake        the board's chips: its list of folders under firmware/drivers/
   sdkconfig.board    its build settings: flash size, PSRAM
   README.md          where to buy it, its quirks, how to reach its USB port
 ```
 
-`board.c` is mostly a description, for example:
+`board_info.c` is only this, and includes nothing but `hal.h`:
 
 ```c
 const board_info_t BOARD = {
@@ -32,11 +32,24 @@ const board_info_t BOARD = {
     .width = 480, .height = 480, .shape = SHAPE_SQUARE, .panel = PANEL_AMOLED,
     .has = { .knob = false, .haptics = false, .mic = true,
              .speaker = true, .motion = true, .battery = true },
-    .screen = &co5300, .touch = &cst9217, .speaker = &es8311,
-    .motion = &qmi8658, .power = &axp2101,
-    .pins = { /* ... */ },
 };
 ```
+
+`board.c` names the chips and gives each its pins. It's a table, too:
+
+```c
+static const co5300_cfg_t SCREEN = { .sclk = 38, .d0 = 4, /* ... */ .width = 480, .height = 480 };
+
+const board_hw_t BOARD_HW = {
+    .i2c_sda = 15, .i2c_scl = 14,
+    .screen = &CO5300, .screen_cfg = &SCREEN, .brightness = {70, 150, 255},
+    .touch = &CST9217, .touch_cfg = &TOUCH,
+    .speaker = &ES8311, .speaker_cfg = &SPEAKER,
+    .feedback = { [FB_TICK] = {.min_gap_ms = 40, SOUND(TICK)}, /* ... */ },
+};
+```
+
+`firmware/platform/esp32/board_hw.h` lists every field. A chip the board doesn't have stays out.
 
 The UX reads these facts and adapts:
 
@@ -47,12 +60,12 @@ The UX reads these facts and adapts:
 ## Steps
 
 1. **Create the folder:** `tools/bento new-board <board>` copies `firmware/boards/_template/`.
-2. **Fill in the facts:** Take the pins and chips from the board's schematic.
-3. **Add any missing chip drivers** under `firmware/drivers/<chip>/`.
-4. **Try it without hardware:** `tools/bento sim <board>` runs the real UX on the Mac and saves a screenshot of every screen at this board's size and shape.
+2. **Fill in the facts:** Take the pins and chips from the board's schematic. If the screen shows upside down when the board is held the right way up, set `mount_deg` to 180 in `board_info.c`: the screen and touch both follow. A quarter turn (90 or 270) only works on a square panel: a wide or tall screen turns only upside down, both for `mount_deg` and when a motion sensor turns it.
+3. **Add any missing chip drivers** under `firmware/drivers/<chip>/`. A driver that needs a component from the registry names it in its own `idf_component.yml`.
+4. **Try it without hardware:** Add the board to `firmware/sim/board_select.c` and `firmware/sim/Makefile`. `tools/bento sim <board>` then opens the real UX in a Mac window at this board's size and shape, and `tools/bento test sim --board <board>` runs the tests on it ([Tests](TESTS.md)).
 5. **Prepare the board:** Back up its flash, and add its MAC address to `boards.local.md`, which git ignores.
-6. **Build and flash, with the owner's go-ahead:** `tools/bento flash <board>` refuses to flash if the connected board's MAC doesn't match.
-7. **Check it on the hardware:** Touch positions, rotation if it has a motion sensor, and frame rate.
+6. **Build and flash, with the owner's go-ahead:** `tools/bento build <board>`, then `tools/bento flash <board>`, which refuses to flash if the connected board's MAC doesn't match.
+7. **Check it on the hardware:** `tools/bento build <board> --hw-test` runs a small test instead of the UX, with color bars, touch dots, a counter, feedback on input and a log of Bluetooth, motion and power. Then check touch positions, rotation if it has a motion sensor, and frame rate with the real UX.
 
 The new board then needs nothing else from the desktop app, because it speaks the same Bluetooth protocol.
 

@@ -1,0 +1,62 @@
+# The tests that need no board: the Mac app against fake services, the tools, and the board UX in the simulator.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the app's requirements
+        run: |
+          python -m venv desktop/.venv
+          desktop/.venv/bin/pip install -r desktop/requirements.txt
+      - name: Desktop tests
+        run: desktop/.venv/bin/python -m unittest discover -s desktop/tests
+
+  tools:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the tools' requirements
+        run: |
+          python -m venv tools/.venv
+          tools/.venv/bin/pip install -r tools/requirements.txt
+      - name: Tools tests, and the generated assets match their sources
+        run: tools/.venv/bin/python -m unittest tools/test_bento.py
+
+  simulator:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch cJSON from ESP-IDF (the only part of it the simulator needs)
+        run: |
+          git clone --depth 1 --branch release/v5.5 --filter=blob:none --sparse https://github.com/espressif/esp-idf.git "$RUNNER_TEMP/esp-idf"
+          git -C "$RUNNER_TEMP/esp-idf" sparse-checkout set components/json
+          git -C "$RUNNER_TEMP/esp-idf" submodule update --init --depth 1 components/json/cJSON
+      - name: Build the simulator
+        run: make -C firmware/sim all asan
+        env:
+          IDF_PATH: ${{ runner.temp }}/esp-idf
+      - name: Simulator tests, both boards
+        run: python3 firmware/sim/tests/run_tests.py
+        env:
+          IDF_PATH: ${{ runner.temp }}/esp-idf
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshots
+          path: firmware/sim/out/

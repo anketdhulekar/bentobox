@@ -1,6 +1,7 @@
-# Never commit credentials or the owner's board details
+# Never commit credentials, your boards' details or private notes
 secrets.h
 boards.local.md
+AGENTS.local.md
 backup/
 
 # Firmware build output and downloaded components
@@ -12,11 +13,20 @@ firmware/test-output/
 # Python
 __pycache__/
 *.pyc
-zookeeper/.venv/
-zookeeper/build/
+.pytest_cache/
 
 # Preview checks
 node_modules/
 preview/test-output/
 
 .DS_Store
+
+# The desktop app's Python environment and app bundle, and the tools' environment
+desktop/.venv/
+desktop/build/
+tools/.venv/
+firmware/sim/out/
+firmware/sim/build/
+
+# The end-to-end tests' results
+test-output/
