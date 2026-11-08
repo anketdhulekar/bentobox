@@ -12,6 +12,7 @@
 #include <fenv.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/event.h>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -42,6 +43,19 @@ int64_t hal_now_us(void)
     return t - s_t0 + 1;
 }
 
+// A sleep that keeps its time, as a board's does. macOS lets usleep's timer fire late to save power: a few milliseconds
+// late in a terminal, and up to 100 ms late for a process it treats as background, such as a CI runner's. There the
+// simulator drew ten frames a second, and every test that times an animation, a drag or the link failed. A kqueue timer
+// marked critical fires on time at any priority.
+static void sleep_us(int64_t us)
+{
+    static _Thread_local int kq = -1;
+    if (kq < 0 && (kq = kqueue()) >= 0) fcntl(kq, F_SETFD, FD_CLOEXEC); // hal_restart execs the simulator again
+    struct kevent ev, out;
+    EV_SET(&ev, 1, EVFILT_TIMER, EV_ADD | EV_ONESHOT, NOTE_USECONDS | NOTE_CRITICAL, us, NULL);
+    if (kq < 0 || (kevent(kq, &ev, 1, &out, 1, NULL) < 0 && errno != EINTR)) usleep((useconds_t)us);
+}
+
 // "%rounding flip": the FPU rounds differently every other frame, as a board's did. Floats then differ in their last bits
 // from one frame to the next, and the change check must not take that for a change (the "steady" case).
 static bool s_flip_rounding;
@@ -53,7 +67,7 @@ void hal_sleep_ms(int ms)
         odd = !odd;
         fesetround(odd ? FE_TOWARDZERO : FE_TONEAREST);
     }
-    usleep((useconds_t)ms * 1000);
+    sleep_us((int64_t)ms * 1000);
 }
 uint32_t hal_fpu_control(void) { return (uint32_t)fegetround(); }
 void *hal_alloc_large(size_t bytes) { return malloc(bytes); }
@@ -507,7 +521,7 @@ static bool server_write(server_t *s, const void *data, size_t len)
             continue;
         }
         if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) && waits++ < 5000) {
-            usleep(1000); // a slow reader: wait for it, up to 5 s
+            sleep_us(1000); // a slow reader: wait for it, up to 5 s
             continue;
         }
         server_drop(s);

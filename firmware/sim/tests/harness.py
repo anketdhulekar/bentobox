@@ -3,12 +3,33 @@ import base64
 import collections
 import json
 import os
+import select
 import socket
 import struct
 import subprocess
 import threading
 import time
 import zlib
+
+# macOS lets a sleep end late to save power: a few milliseconds late in a terminal, and up to 100 ms late for a process it
+# treats as background, such as a CI runner's. A case that paces a drag or times a hold needs its sleeps on time, so on
+# macOS they're a kqueue timer marked critical, as the simulator's frames are (hal_sim.c).
+_NOTE_USECONDS, _NOTE_CRITICAL = 0x2, 0x20  # <sys/event.h>
+
+
+def sleep(seconds):
+    if seconds <= 0:
+        return
+    if not hasattr(select, "kqueue"):
+        time.sleep(seconds)
+        return
+    kq = select.kqueue()
+    try:
+        timer = select.kevent(1, filter=select.KQ_FILTER_TIMER, flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+                              fflags=_NOTE_USECONDS | _NOTE_CRITICAL, data=max(1, int(seconds * 1e6)))
+        kq.control([timer], 1, None)
+    finally:
+        kq.close()
 
 
 def rgb565_to_rgb(p):
@@ -103,7 +124,7 @@ class Sim:
             except OSError:
                 if time.time() > deadline or (self.proc and self.proc.poll() is not None):
                     raise RuntimeError(f"can't reach the simulator on port {self.debug_port}: exit {self.proc.poll() if self.proc else None}")
-                time.sleep(0.05)
+                sleep(0.05)
         self.sock.settimeout(None)
         self.reader = threading.Thread(target=self._read, args=(self.sock,), daemon=True)
         self.reader.start()
@@ -126,12 +147,12 @@ class Sim:
     def reboot(self):
         """#reboot, and back. The start's own log lines go out before anyone can be connected, so it's told by the uptime."""
         self.send("#reboot")
-        time.sleep(0.2)
+        sleep(0.2)
         try:
             self.sock.close()
         except OSError:
             pass
-        time.sleep(0.2)
+        sleep(0.2)
         with self.cond:
             self.lines.clear()
             self.links.clear()
@@ -236,12 +257,12 @@ class Sim:
             last = self.state()
             if pred(last):
                 return last
-            time.sleep(0.03)
+            sleep(0.03)
         raise TimeoutError(f"never reached {what}; last: {json.dumps(last)[:500] if last else None}")
 
     def settle(self, seconds=0.12):
         """Long enough for a frame to be drawn, and for glides to mostly finish."""
-        time.sleep(seconds)
+        sleep(seconds)
 
     def wait_log(self, prefix, timeout=5):
         return self._wait("log", timeout=timeout, pred=lambda v: v.startswith(prefix))
@@ -280,7 +301,7 @@ class Sim:
 
     def link_usb(self):
         self.cmd("#link usb")
-        time.sleep(0.05)
+        sleep(0.05)
 
     def mac(self, obj):
         text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)

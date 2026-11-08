@@ -23,7 +23,7 @@ import traceback
 import wave
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness import Sim  # noqa: E402
+from harness import Sim, sleep  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIMDIR = os.path.dirname(HERE)
@@ -257,7 +257,7 @@ class Case:
         rid = m["rid"]
         s.mac({"t": "ack", "id": m["id"]})
         s.wait_state(lambda v: v["link"]["outbox"] == 0, what="the ack to clear it")
-        time.sleep(1.1)
+        sleep(1.1)
         st = s.state()
         self.check(st["timer"]["elapsed_s"] >= 1, "it counts")
         s.shot("timer-running")
@@ -268,7 +268,7 @@ class Case:
         self.eq(m["rid"], rid, "stop: rid")
         s.mac({"t": "ack", "id": m["id"]})
         elapsed = st["timer"]["elapsed_s"]
-        time.sleep(0.5)
+        sleep(0.5)
         self.eq(s.state()["timer"]["elapsed_s"], elapsed, "the total stays put while paused")
         s.shot("timer-paused")
         # Hours use the smaller digits.
@@ -536,7 +536,7 @@ class Case:
         knob = s.state()["has"]["knob"]
         for _ in range(5 if knob else 3):
             s.key("+" if knob else ">")
-            time.sleep(0.05)
+            sleep(0.05)
         sent = []
         deadline = time.time() + 1.5
         while time.time() < deadline:
@@ -550,7 +550,7 @@ class Case:
         self.check(len(sent) >= 2, f"several changes went out: {len(sent)}")
         want = s.state()["pomo"]["set_min"]
         for rev, (m, got_ms) in enumerate(sent, start=100):
-            time.sleep(0.2)  # the answer's trip: it arrives well after the Mac stamped it
+            sleep(0.2)  # the answer's trip: it arrives well after the Mac stamped it
             ago = int(m["now"]) - int(m["at"])
             pomo = dict(m["pomo"], of=m["pomo"].get("of") or uid)
             timer = dict(m["timer"], of=m["timer"].get("of") or uid)
@@ -776,7 +776,7 @@ class Case:
         self.eq(st["status"], "", "status stays empty")
         s.cmd("#turn 1")
         st = s.wait_state(lambda v: v["hint"] == "pause to adjust", what="pause to adjust")
-        time.sleep(1.1)
+        sleep(1.1)
         self.check(s.state()["pomo"]["remaining_s"] < 1500, "it counts down")
         s.shot("pomodoro-running")
         s.key("s")
@@ -1448,7 +1448,7 @@ class Case:
         start = s.state()["sel"]
         self.touch("down", int(300 * k), y)
         for i in range(1, 9):
-            time.sleep(0.012)
+            sleep(0.012)
             self.touch("move", int((300 - i * 28) * k), y)
         self.touch("up", int((300 - 8 * 28) * k), y)
         at_release = s.state()["sel"]
@@ -1461,7 +1461,7 @@ class Case:
         # A touch stops a flick, and does nothing else.
         self.touch("down", int(300 * k), y)
         for i in range(1, 9):
-            time.sleep(0.012)
+            sleep(0.012)
             self.touch("move", int((300 - i * 28) * k), y)
         self.touch("up", int((300 - 8 * 28) * k), y)
         s.clear_links()
@@ -1949,7 +1949,7 @@ class Case:
         else:
             s.key("<")
         picked = s.wait_state(lambda v: v["sel"] != st["sel"], what="a pick by hand")["sel"]
-        time.sleep(9)
+        sleep(9)
         self.eq(s.state()["sel"], picked, "a pick by hand holds")
         s.cmd("#autoscroll off")
         s.cmd("#mode timer")
@@ -2031,7 +2031,7 @@ class Case:
         if self.round:
             st = s.state()
             s.cmd("#tilt 90")
-            time.sleep(1.2)
+            sleep(1.2)
             self.eq(s.state()["rotation"]["orient"], self.mount, "no motion sensor: it never turns")
             s.cmd("#tilt_off")
             return
@@ -2043,13 +2043,13 @@ class Case:
         up = s.frame()
         # A brief wobble doesn't move it.
         s.cmd("#tilt 90")
-        time.sleep(0.25)
+        sleep(0.25)
         s.cmd("#tilt 0")
-        time.sleep(0.9)
+        sleep(0.9)
         self.eq(s.state()["rotation"]["orient"], 0, "a wobble doesn't turn it")
         # Within the hysteresis: 50 degrees isn't past 45 + 12.
         s.cmd("#tilt 50")
-        time.sleep(0.9)
+        sleep(0.9)
         self.eq(s.state()["rotation"]["orient"], 0, "not past the hysteresis")
         s.cmd("#tilt 0")
         # The turn: it waits under a second, then animates.
@@ -2112,14 +2112,14 @@ class Case:
         # Flat: gravity gives no direction, so nothing moves.
         s.cmd("#flat on")
         s.cmd("#tilt 0")
-        time.sleep(1.2)
+        sleep(1.2)
         self.eq(s.state()["rotation"]["orient"], 270, "flat: it stays")
         s.cmd("#flat off")
         s.wait_state(lambda v: v["rotation"]["orient"] == 0 and not v["rotation"]["turning"], timeout=2.5, what="upright again")
         # Auto-rotate off.
         s.cmd("#autorotate off")
         s.cmd("#tilt 180")
-        time.sleep(1.1)
+        sleep(1.1)
         self.eq(s.state()["rotation"]["orient"], 0, "auto-rotate off")
         s.cmd("#autorotate on")
         s.cmd("#tilt 0")
@@ -2248,12 +2248,15 @@ class Case:
         ink = lambda c: min(c) > 200
         at = lambda f, a: f.rgb(int(mid + r * math.sin(a)), int(mid - r * math.cos(a)))
         self.touch("down", mid, mid)
-        time.sleep(0.42)  # about halfway: a quarter of the ring is certainly done, and three quarters certainly aren't
-        f = s.shot("hold-ring-halfway")
+        sleep(0.42)  # about halfway: a quarter of the ring is certainly done, and three quarters certainly aren't
+        # The frame and the state first: saving a PNG takes a slow machine long enough for the hold to end.
+        f = s.frame()
+        still = s.state()["pomo"]["state"]
+        s.shot("hold-ring-halfway", f)
         self.check(ink(at(f, math.pi / 2)), "the ring has reached three o'clock")
         self.check(not ink(at(f, math.pi * 1.6)), "and it hasn't closed")
-        self.eq(s.state()["pomo"]["state"], "running", "nothing reset yet")
-        time.sleep(0.45)
+        self.eq(still, "running", "nothing reset yet")
+        sleep(0.45)
         st = s.wait_state(lambda v: v["pomo"]["state"] == "idle", what="the reset")
         self.eq(st["hint"], "reset", "and it says so")
         self.touch("up", mid, mid)
@@ -2265,10 +2268,11 @@ class Case:
         s.cmd("#project 0")
         s.settle(0.2)
         self.touch("down", mid, mid)
-        time.sleep(0.42)
-        f = s.shot("hold-ring-at-rest")
+        sleep(0.42)
+        f = s.frame()
+        s.shot("hold-ring-at-rest", f)
         self.check(not ink(at(f, math.pi / 2)), "no ring at rest")
-        time.sleep(0.45)
+        sleep(0.45)
         self.touch("up", mid, mid)
         s.settle(0.2)
         self.eq(s.state()["pomo"]["state"], "idle", "still at rest")
@@ -2330,7 +2334,7 @@ class Case:
         s.shot("timer-offline")
         id0 = st["link"]["next_id"]
         s.clear_links()
-        time.sleep(0.3)
+        sleep(0.3)
         s.cmd("#anim off")
         # Swiping down asks nothing of a Mac that isn't there.
         s.key("p")
@@ -2340,7 +2344,7 @@ class Case:
         count = st["link"]["outbox"]
         self.check(count >= 2, "both messages saved")
         s.cmd("#mac on")
-        time.sleep(0.1)
+        sleep(0.1)
         s.clear_links()
         s.mac({"t": "hello", "v": 4, "host": "MacBook Pro"})
         s.wait_link(lambda m: m.get("t") == "board", what="the board message first")
@@ -2372,11 +2376,11 @@ class Case:
             s.key("s")
             s.key("s")
         s.wait_state(lambda v: v["link"]["outbox"] == 6, what="six saved")
-        time.sleep(1.1)
+        sleep(1.1)
         s.cmd("#mac on")
         s.settle(0.05)
         self.hello()
-        time.sleep(0.3)
+        sleep(0.3)
         self.check(not any(m.get("t") == "toggl" for m in s.links), "no time from the Mac yet: it holds them")
         self.mac_state([])
         msgs = self.take_toggl(6)
@@ -2935,7 +2939,7 @@ class Case:
         s.settle()
         s.key("m")
         st = s.wait_state(lambda v: v["voice"] == "listening", what="listening")
-        time.sleep(0.9)
+        sleep(0.9)
         s.shot("voice-listening")
         s.clear_links()
         m = s.wait_link(lambda x: x.get("t") == "voice_start", timeout=12, what="voice_start")
@@ -3035,7 +3039,7 @@ class Case:
         s.cmd("#task Write a very long task name that goes on and on and on past the end of the line")
         s.settle()
         f1 = s.shot("text-long-resting")
-        time.sleep(3.2)
+        sleep(3.2)
         f2 = s.shot("text-long-scrolling")
         changed = sum(1 for y in range(self.base // 4, self.base // 2, 2) for x in range(20, self.base - 20, 2) if f1.rgb(x, y) != f2.rgb(x, y))
         self.check(changed > 20, f"a long task scrolls: {changed}")
@@ -3088,7 +3092,7 @@ class Case:
             c.settimeout(3)
             return c
         c = client()
-        time.sleep(0.15)
+        sleep(0.15)
         self.eq(s.state()["link"]["connected"], True, "the TCP client")
         # With no hello, nothing is listened to.
         before = s.state()["agents"]
@@ -3128,7 +3132,7 @@ class Case:
                 pass
             c.setblocking(True)
             c.settimeout(3)
-        time.sleep(0.5)
+        sleep(0.5)
         st = s.state()
         self.check(s.alive(), "alive after the fuzz")
         # Drive every screen with whatever state that left, to catch anything stored badly.
