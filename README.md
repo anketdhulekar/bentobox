@@ -16,6 +16,8 @@ Like a bento box, it has room for more sections.
 - **Lock:** Choose Lock to keep the screen to yourself. The board keeps showing its normal screen, and a 4-digit code, set on the Mac, unlocks it.
 - **Settings:** Device (brightness in ten steps, dim enough for a bedroom, plus sound, color, auto-rotate, battery, firmware and MAC address), Connectivity, Agents, and Timer & Pomodoro.
 
+The [user guide](docs/USER-GUIDE.md) shows every screen on both boards, and how to use it.
+
 ## How it's split
 
 ```text
