@@ -38,7 +38,7 @@ typedef struct {
     char name[44], proj[44], act[52], note[68], where[64];
     agent_status_t st;
     agent_kind_t kind;
-    bool background, rex;
+    bool background, pane; // pane: a tap can bring its terminal pane to the front (in Rex or Herdr)
     int32_t age_s, up_s;
     uint8_t nsubs;
     link_sub_t subs[LINK_MAX_SUBS];

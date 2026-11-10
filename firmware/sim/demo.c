@@ -76,7 +76,7 @@ static int append_row(char *line, size_t cap, int n, int i, bool first)
     const bool needs = i == s_needs;
     const int64_t up = (hal_now_us() - s_t0) / 1000000;
     return n + snprintf(line + n, cap - (size_t)n,
-                        "%s{\"id\":\"%s\",\"name\":\"%s\",\"proj\":\"%s\",\"kind\":\"i\",\"st\":\"%s\",\"act\":\"%s\",\"note\":\"\",\"age\":%lld,\"up\":%lld,\"rex\":1,\"where\":\"Rex session \\u201cwork\\u201d\"%s%s%s}",
+                        "%s{\"id\":\"%s\",\"name\":\"%s\",\"proj\":\"%s\",\"kind\":\"i\",\"st\":\"%s\",\"act\":\"%s\",\"note\":\"\",\"age\":%lld,\"up\":%lld,\"pane\":1,\"where\":\"Rex session \\u201cwork\\u201d\"%s%s%s}",
                         first ? "" : ",", a.id, a.name, a.proj, needs ? "needs" : a.st, needs ? "Waiting for your answer" : a.act,
                         (long long)(a.age_min * 60 + up), (long long)(a.age_min * 180 + up), a.agent[0] ? ",\"agent\":\"" : "", a.agent, a.agent[0] ? "\"" : "");
 }

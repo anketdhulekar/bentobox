@@ -14,6 +14,8 @@ from unittest import mock
 import helpers  # noqa: F401 (first: it isolates this process)
 
 import install
+import bentobox
+from agents import herdr as herdr_mod
 from agents import hook as zoo_hook
 from agents import rex as rex_mod
 from agents import sources
@@ -206,8 +208,8 @@ class Polling(unittest.TestCase):
         msg = self.zoo.public()
         a = msg["agents"][0]
         self.assertEqual(msg["t"], "state")
-        self.assertEqual(set(a), {"id", "name", "proj", "kind", "st", "act", "note", "age", "up", "rex", "where", "subs"})
-        self.assertEqual((a["st"], a["rex"], len(a["subs"])), ("working", 1, 1))
+        self.assertEqual(set(a), {"id", "name", "proj", "kind", "st", "act", "note", "age", "up", "pane", "where", "subs"})
+        self.assertEqual((a["st"], a["pane"], len(a["subs"])), ("working", 1, 1))
         self.assertEqual(len(a["id"]), 8)
 
 
@@ -294,11 +296,21 @@ class LocalHttp(unittest.TestCase):
     def test_the_hook_script_end_to_end(self):
         event = {"hook_event_name": "PreToolUse", "session_id": "e2e", "cwd": "/a/b/demo", "tool_name": "Read",
                  "tool_input": {"file_path": "/a/b/demo/notes.txt"}}
-        env = dict(os.environ, BENTOBOX_PORT=str(self.port), REX_BLOCK="block:7", REX_SESSION="session:7")
+        env = dict(os.environ, BENTOBOX_PORT=str(self.port), REX_BLOCK="block:7", REX_SESSION="session:7", HC_TERMINAL_ID="t7")
         res = subprocess.run([sys.executable, HOOK], input=json.dumps(event), text=True, env=env, timeout=10)
         self.assertEqual(res.returncode, 0)
         a = self.zoo.agents["e2e"]
-        self.assertEqual((a.activity, a.project, a.rex_block), ("Reading notes.txt", "demo", "block:7"))
+        self.assertEqual((a.activity, a.project, a.rex_block, a.hc_terminal), ("Reading notes.txt", "demo", "block:7", "t7"))
+
+    def test_a_shared_codex_process_sends_no_pane(self):
+        """This test isn't a Codex window, so to the hook it's Codex's shared background process: what its
+        environment says of panes is stale."""
+        event = {"hook_event_name": "UserPromptSubmit", "session_id": "cx", "cwd": "/a/b/shop"}
+        env = dict(os.environ, BENTOBOX_PORT=str(self.port), REX_BLOCK="block:7", REX_SESSION="session:7", HC_TERMINAL_ID="t7")
+        res = subprocess.run([sys.executable, HOOK, "--agent", "codex"], input=json.dumps(event), text=True, env=env, timeout=10)
+        self.assertEqual(res.returncode, 0)
+        a = self.zoo.agents["cx"]
+        self.assertEqual((a.agent, a.rex_block, a.hc_terminal, a.app()), ("codex", "", "", ""))
 
     def test_the_hook_script_never_fails(self):
         env = dict(os.environ, BENTO_PORT="1")  # nothing listens there
@@ -354,7 +366,7 @@ class CodexWindows(unittest.TestCase):
         zoo = Zoo(Clock())
         zoo.sync_codex_windows([self.W])
         a = zoo.public()["agents"][0]
-        self.assertEqual((a["agent"], a["st"], a["act"], a["rex"]), ("codex", "idle", "Waiting for a prompt", 1))
+        self.assertEqual((a["agent"], a["st"], a["act"], a["pane"]), ("codex", "idle", "Waiting for a prompt", 1))
         # The first prompt: the session joins the window's agent (same id, so the same hat, no poof).
         zoo.on_hook(ev("UserPromptSubmit", sid="s-1", project="shop", agent="codex", rex_session="", rex_block=""))
         b = zoo.public()["agents"]
@@ -483,9 +495,9 @@ class Grok(unittest.TestCase):
                             "opened_at": "2026-11-05T01:21:54Z"},
                            {"session_id": "g9", "pid": 999999, "pid_start": 1, "cwd": "/x"},  # not a running grok
                            "junk", {"pid": "nope"}], f)
-            ws = sources.grok_windows(path, pids={4343}, rex_of=lambda pid: ("session:7", "block:7"))
-            self.assertEqual(ws, [{"pid": 4343, "session": "g1", "started": 1793841699.898695, "folder": "ml-eval",
-                                   "rex_session": "session:7", "rex_block": "block:7"}])
+            pane = {"rex_session": "session:7", "rex_block": "block:7", "hc_terminal": ""}
+            ws = sources.grok_windows(path, pids={4343}, pane_of=lambda pid: pane)
+            self.assertEqual(ws, [{"pid": 4343, "session": "g1", "started": 1793841699.898695, "folder": "ml-eval", **pane}])
             self.assertEqual(sources.grok_windows(os.path.join(d, "missing.json"), pids=set()), [])
 
     def test_only_grok_apps_in_a_terminal_are_windows(self):
@@ -634,22 +646,33 @@ class KilledAgents(unittest.TestCase):
         self.assertNotIn("k1", zoo.agents)
 
 
-class RexFromProcess(unittest.TestCase):
-    def test_only_the_rex_ids_are_taken(self):
-        line = "claude --x API_KEY=sk-secret REX_SESSION=session:01a1-ff REX_BLOCK=block:02b2-ee HOME=/Users/me"
-        self.assertEqual(dict(sources.REX_ENV.findall(line)), {"REX_SESSION": "session:01a1-ff", "REX_BLOCK": "block:02b2-ee"})
+class PaneFromProcess(unittest.TestCase):
+    def test_only_the_pane_ids_are_taken(self):
+        line = ("claude --x API_KEY=sk-secret REX_SESSION=session:01a1-ff REX_BLOCK=block:02b2-ee HOME=/Users/me "
+                "HC_TERMINAL_ID=t12 HC_TERMINAL_SOCKET=/private/sock")
+        self.assertEqual(sources.pane_ids(line), {"rex_session": "session:01a1-ff", "rex_block": "block:02b2-ee",
+                                                  "hc_terminal": "t12"})
+
+    def test_ids_that_arent_well_formed_are_left_out(self):
+        line = "claude REX_SESSION=-C REX_BLOCK=block:7;rm HC_TERMINAL_ID=--json"
+        self.assertEqual(sources.pane_ids(line), {"rex_session": "", "rex_block": "", "hc_terminal": ""})
+        self.assertEqual(sources.pane_ids("claude HC_TERMINAL_ID=vps/t7")["hc_terminal"], "")  # another machine's
 
     def test_this_process(self):
-        session, block = sources.rex_env(os.getpid())
-        if os.environ.get("REX_BLOCK"):
-            self.assertEqual(block, os.environ["REX_BLOCK"])
+        found = sources.pane_env(os.getpid())
+        for key, name in (("rex_block", "REX_BLOCK"), ("hc_terminal", "HC_TERMINAL_ID")):
+            if os.environ.get(name):
+                self.assertEqual(found[key], os.environ[name])
 
-    def test_set_rex_fills_only_missing_panes(self):
+    def test_set_pane_fills_only_missing_panes(self):
         zoo = Zoo()
-        zoo.on_poll([{"sessionId": "a", "status": "idle", "pid": 42}])
-        self.assertEqual(zoo.missing_rex(), [("a", 42)])
-        zoo.set_rex("a", "session:1", "block:1")
-        self.assertEqual((zoo.missing_rex(), zoo.agents["a"].rex_block), ([], "block:1"))
+        zoo.on_poll([{"sessionId": "a", "status": "idle", "pid": 42}, {"sessionId": "b", "status": "idle", "pid": 43}])
+        self.assertEqual(sorted(zoo.missing_panes()), [("a", 42), ("b", 43)])
+        zoo.set_pane("a", {"rex_session": "session:1", "rex_block": "block:1", "hc_terminal": ""})
+        zoo.set_pane("b", {"rex_session": "", "rex_block": "", "hc_terminal": "t3"})
+        self.assertEqual((zoo.missing_panes(), zoo.agents["a"].app(), zoo.agents["b"].app()), ([], "rex", "herdr"))
+        zoo.set_pane("b", {"rex_session": "", "rex_block": "", "hc_terminal": "t9"})  # it has one already
+        self.assertEqual(zoo.agents["b"].hc_terminal, "t3")
 
 
 class FakeRex(rex_mod.Rex):
@@ -707,7 +730,7 @@ class PaneNames(unittest.TestCase):
     def agent(self):
         zoo = Zoo()
         zoo.on_poll([{"sessionId": "a", "name": "agent-zoo-08", "status": "idle"}])
-        zoo.set_rex("a", "session:1", "block:1")
+        zoo.set_pane("a", {"rex_session": "session:1", "rex_block": "block:1"})
         return zoo
 
     def name(self, zoo):
@@ -789,10 +812,212 @@ class PaneNames(unittest.TestCase):
         zoo = Zoo()
         stop = mock.Mock()
         stop.is_set.side_effect = [False, True]
+        pane = {"rex_session": "session:1", "rex_block": "block:1", "hc_terminal": ""}
         with mock.patch.multiple(sources, poll_agents=lambda _: (rows, True), codex_windows=lambda: [],
-                                 grok_windows=lambda: [], rex_env=lambda pid: ("session:1", "block:1")):
-            sources.poller(zoo, {"claude_bin": "claude", "poll_seconds": 10}, stop, rex)
+                                 grok_windows=lambda: [], pane_env=lambda pid: pane):
+            sources.poller(zoo, {"claude_bin": "claude", "poll_seconds": 10}, stop, rex, FakeHerdr())
         self.assertEqual(self.name(zoo), "otter")
+
+
+class FakeHerdr(herdr_mod.Herdr):
+    """Records the hc and herdr-app commands instead of running them, and never opens the real Herdr. Each
+    `herdr-app status` takes the next of `windows` (True: a window is open), and the last one stays. `hc ls` gives
+    `listing`, or fails with None. A command named in `fail` fails."""
+
+    def __init__(self, windows=(True,), listing=None, fail=()):
+        self.now = 0.0
+        super().__init__("hc", "/Applications/Herdr.app/Contents/MacOS/Herdr", clock=lambda: self.now, sleep=self._sleep)
+        self.calls, self.windows, self.listing, self.fail = [], list(windows), listing, set(fail)
+
+    def _sleep(self, seconds):
+        self.now += seconds
+
+    def _run(self, *args, timeout=4):
+        call = ("hc" if args[0] == self.hc else "herdr-app", *args[1:])
+        self.calls.append(call)
+        if call[1] in self.fail:
+            raise RuntimeError(f"{call[1]} failed")
+        if call[:2] == ("herdr-app", "status"):
+            if not (self.windows.pop(0) if len(self.windows) > 1 else self.windows[0]):
+                raise RuntimeError("no Herdr window")
+        elif call[:2] == ("hc", "ls"):
+            if self.listing is None:
+                raise RuntimeError("hc isn't running")
+            return json.dumps({"terminals": self.listing, "hidden_finished": 0, "machines": []})
+        return ""
+
+    def _show_app(self):
+        self.calls.append(("open",))
+
+
+FOCUS_T7 = ("herdr-app", "do", "agent.focus", "--terminal", "t7")
+
+
+class HerdrFocus(unittest.TestCase):
+    def test_the_terminal_shows_and_the_window_comes_to_the_front(self):
+        herdr = FakeHerdr()
+        herdr.focus("t7")
+        self.assertEqual(herdr.calls, [("herdr-app", "status"), FOCUS_T7, ("open",)])
+
+    def test_with_no_window_herdr_opens_first(self):
+        herdr = FakeHerdr(windows=[False, False, False, True])
+        herdr.focus("t7")
+        self.assertEqual(herdr.calls[:2], [("herdr-app", "status"), ("open",)])
+        self.assertEqual(herdr.calls[-2:], [FOCUS_T7, ("open",)])
+        self.assertEqual(herdr.calls.count(("herdr-app", "status")), 4)  # it waited for the window
+
+    def test_a_window_that_never_comes_is_an_error(self):
+        herdr = FakeHerdr(windows=[False])
+        with self.assertRaises(RuntimeError):
+            herdr.focus("t7")
+        self.assertNotIn(FOCUS_T7, herdr.calls)
+        self.assertLess(herdr.now, herdr_mod.WINDOW_WAIT_S + 1)  # it gave up in time
+
+    def test_a_terminal_herdr_cant_show_is_an_error(self):
+        herdr = FakeHerdr(fail={"do"})
+        with self.assertRaises(RuntimeError):
+            herdr.focus("t7")
+
+    def test_the_app_is_the_bundle_herdr_app_is_in(self):
+        with tempfile.TemporaryDirectory() as d:
+            macos = os.path.join(d, "Herdr.app", "Contents", "MacOS")
+            os.makedirs(macos)
+            open(os.path.join(macos, "Herdr"), "w").close()
+            os.symlink(os.path.join(macos, "Herdr"), os.path.join(d, "herdr-app"))
+            self.assertEqual(herdr_mod.app_bundle(os.path.join(d, "herdr-app")), os.path.realpath(os.path.join(d, "Herdr.app")))
+            open(os.path.join(d, "loose"), "w").close()
+            self.assertEqual(herdr_mod.app_bundle(os.path.join(d, "loose")), "")  # then `open -a Herdr`
+
+
+class HerdrNames(unittest.TestCase):
+    ROWS = [{"address": "t4", "agent": "claude-code", "cwd": "/Users/me/private/bentobox", "state": "live",
+             "status": "working", "turn": 3, "where": "bentobox / 1"},
+            {"address": "t10", "name": "review", "parent": "t4", "cwd": "/Users/me/private/x", "state": "live", "turn": 0},
+            {"address": "t11", "name": "other", "where": "elsewhere / 2"},  # holds no agent
+            {"address": "vps/t4", "name": "remote"}, "junk", {"name": "no address"}]
+
+    def test_names_and_places_of_the_agents_terminals_only(self):
+        herdr = FakeHerdr(listing=self.ROWS)
+        self.assertEqual(herdr.pane_names({"t4", "t10"}), {"t4": "", "t10": "review"})
+        self.assertEqual(herdr.calls, [("hc", "ls", "--json")])
+        self.assertEqual([herdr.where(t) for t in ("t4", "t10", "t11")], ["Herdr “bentobox / 1”", "Herdr", "Herdr"])
+        self.assertNotIn("private", json.dumps(herdr.places))
+
+    def test_no_agent_in_hc_no_hc_command(self):
+        herdr = FakeHerdr(listing=self.ROWS)
+        self.assertEqual(herdr.pane_names(set()), {})
+        self.assertEqual(herdr.pane_names({"--json", "vps/t4", ""}), {})
+        self.assertEqual(herdr.calls, [])
+
+    def test_a_listing_that_fails_keeps_the_places(self):
+        herdr = FakeHerdr(listing=self.ROWS)
+        herdr.pane_names({"t4"})
+        herdr.listing = None
+        self.assertEqual(herdr.pane_names({"t4"}), {})
+        self.assertEqual(herdr.where("t4"), "Herdr “bentobox / 1”")
+
+    def test_a_place_is_never_a_whole_path(self):
+        self.assertEqual(herdr_mod.place("/Users/me/private/bentobox"), "bentobox")
+        self.assertEqual(herdr_mod.place("~/x/"), "x")
+        self.assertEqual(herdr_mod.place("bentobox  /\n1"), "bentobox / 1")
+
+
+class HerdrAgents(unittest.TestCase):
+    def test_an_agent_in_an_hc_terminal(self):
+        zoo = Zoo()
+        zoo.on_hook(ev("PreToolUse", rex_session="", rex_block="", hc_terminal="t7"))
+        a = zoo.agents["s1"]
+        self.assertEqual((a.app(), a.pane_id(), zoo.public()["agents"][0]["pane"]), ("herdr", "t7", 1))
+        self.assertEqual((zoo.hc_terminals(), zoo.rex_sessions()), ({"t7"}, set()))
+
+    def test_rex_comes_first(self):
+        zoo = Zoo()
+        zoo.on_hook(ev("PreToolUse", hc_terminal="t7"))  # with ev's Rex pane too
+        a = zoo.agents["s1"]
+        self.assertEqual((a.app(), a.pane_id()), ("rex", "block:1"))
+        self.assertEqual((zoo.hc_terminals(), zoo.rex_sessions()), (set(), {"session:1"}))
+
+    def test_no_pane_no_tap(self):
+        zoo = Zoo()
+        zoo.on_hook(ev("PreToolUse", rex_session="", rex_block=""))
+        self.assertEqual((zoo.agents["s1"].app(), zoo.public()["agents"][0]["pane"]), ("", 0))
+
+    def test_a_session_resumed_elsewhere_follows_it(self):
+        zoo = Zoo()
+        zoo.on_hook(ev("PreToolUse"))  # in Rex
+        zoo.on_hook(ev("SessionStart", source="resume", rex_session="", rex_block="", hc_terminal="t7"))
+        a = zoo.agents["s1"]
+        self.assertEqual((a.app(), a.rex_block, a.rex_session), ("herdr", "", ""))
+        zoo.on_hook(ev("PreToolUse", rex_session="", rex_block=""))  # names no pane: it stays
+        self.assertEqual(a.pane_id(), "t7")
+        zoo.on_hook(ev("SessionStart", source="resume"))  # back in Rex
+        self.assertEqual((a.app(), a.hc_terminal), ("rex", ""))
+
+    def test_a_terminal_found_later_reaches_the_display(self):
+        zoo = Zoo()
+        zoo.on_hook(ev("PreToolUse", rex_session="", rex_block=""))
+        before = zoo.version
+        zoo.on_hook(ev("PreToolUse", rex_session="", rex_block="", hc_terminal="t7"))
+        self.assertGreater(zoo.version, before)
+
+    def test_a_named_terminal_names_its_agent(self):
+        zoo = Zoo()
+        zoo.on_poll([{"sessionId": "a", "name": "agent-zoo-08", "status": "idle"}])
+        zoo.set_pane("a", {"hc_terminal": "t10"})
+        zoo.set_pane_names(FakeHerdr(listing=HerdrNames.ROWS).pane_names(zoo.hc_terminals()))
+        self.assertEqual(zoo.public()["agents"][0]["name"], "review")
+
+    def test_codex_and_grok_windows_in_hc_terminals(self):
+        zoo = Zoo()
+        zoo.sync_codex_windows([dict(CodexWindows.W, rex_session="", rex_block="", hc_terminal="t5")])
+        zoo.sync_grok_windows([{"pid": os.getpid(), "session": "g", "started": 0, "folder": "ml-eval",
+                                "rex_session": "", "rex_block": "", "hc_terminal": "t6"}])
+        self.assertEqual(zoo.hc_terminals(), {"t5", "t6"})
+
+    def test_the_poller_names_an_agent_in_hc(self):
+        rows = [{"sessionId": "a", "name": "agent-zoo-08", "status": "idle", "pid": os.getpid()}]
+        herdr, rex, zoo = FakeHerdr(listing=HerdrNames.ROWS), ListingRex({}), Zoo()
+        stop = mock.Mock()
+        stop.is_set.side_effect = [False, True]
+        pane = {"rex_session": "", "rex_block": "", "hc_terminal": "t10"}
+        with mock.patch.multiple(sources, poll_agents=lambda _: (rows, True), codex_windows=lambda: [],
+                                 grok_windows=lambda: [], pane_env=lambda pid: pane):
+            sources.poller(zoo, {"claude_bin": "claude", "poll_seconds": 10}, stop, rex, herdr)
+        self.assertEqual(zoo.public()["agents"][0]["name"], "review")
+        self.assertEqual((herdr.calls, rex.calls), ([("hc", "ls", "--json")], []))  # no agent in Rex: no rex command
+
+
+class TapGoesToItsApp(unittest.TestCase):
+    def setUp(self):
+        self.rex, self.herdr = FakeRex(), FakeHerdr()
+
+    def agent(self, **ids):
+        a = Agent("s", 0)
+        a.take_pane(ids)
+        return a
+
+    def test_a_rex_pane(self):
+        bentobox.focus_pane(self.agent(rex_session="session:1", rex_block="block:1", hc_terminal="t7"), self.rex, self.herdr)
+        self.assertEqual(self.rex.calls[-1], ("focus", "block:1", "-s", "session:1"))
+        self.assertEqual(self.herdr.calls, [])
+
+    def test_a_herdr_terminal(self):
+        bentobox.focus_pane(self.agent(hc_terminal="t7"), self.rex, self.herdr)
+        self.assertIn(FOCUS_T7, self.herdr.calls)
+        self.assertEqual(self.rex.calls, [])
+
+    def test_no_pane(self):
+        with self.assertRaises(RuntimeError):
+            bentobox.focus_pane(self.agent(), self.rex, self.herdr)
+        self.assertEqual((self.rex.calls, self.herdr.calls), ([], []))
+
+    def test_where_it_runs(self):
+        self.herdr.places = {"t7": "bentobox / 1"}
+        where = lambda **ids: bentobox.pane_place(self.agent(**ids), self.rex, self.herdr)  # noqa: E731
+        self.assertEqual(where(hc_terminal="t7"), "Herdr “bentobox / 1”")
+        self.assertEqual(where(rex_session="session:1", rex_block="block:1"), "Rex")
+        self.assertEqual(where(), "No terminal known")
+        self.assertEqual(self.herdr.calls, [])  # it runs no process: the zoo's lock is held
 
 
 class SessionFiles(unittest.TestCase):
@@ -877,9 +1102,11 @@ class BesideTheOldApp(unittest.TestCase):
         out = zoo_hook.build({"hook_event_name": "PreToolUse", "session_id": "s", "cwd": "/Users/me/private/proj",
                               "tool_name": "Bash", "tool_input": {"command": "rm -rf /", "description": "Clean up"},
                               "transcript_path": "/Users/me/x.jsonl", "prompt": "secret"},
-                             {"REX_SESSION": "session:1", "REX_BLOCK": "block:1", "CLAUDE_CODE_ENTRYPOINT": "cli", "API_KEY": "secret"})
+                             {"REX_SESSION": "session:1", "REX_BLOCK": "block:1", "HC_TERMINAL_ID": "t4",
+                              "HC_TERMINAL_SOCKET": "/private/sock", "CLAUDE_CODE_ENTRYPOINT": "cli", "API_KEY": "secret"})
         self.assertEqual(out, {"event": "PreToolUse", "session_id": "s", "project": "proj", "entrypoint": "cli",
-                               "rex_session": "session:1", "rex_block": "block:1", "activity": "Bash: Clean up"})
+                               "rex_session": "session:1", "rex_block": "block:1", "hc_terminal": "t4",
+                               "activity": "Bash: Clean up"})
 
 
 if __name__ == "__main__":

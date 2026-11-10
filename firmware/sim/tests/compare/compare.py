@@ -21,11 +21,11 @@ from harness import Sim  # noqa: E402
 SIMDIR = os.path.dirname(os.path.dirname(HERE))
 TASK, PROJECT = "Write the Q4 plan", (123, "#4FB3F6", "Deep work")
 AGENTS = [
-    {"id": "a1000e7", "name": "api-refactor-12", "proj": "api-server", "kind": "i", "st": "working", "act": "Editing main.c", "note": "", "age": 240, "up": 1200, "rex": 1},
-    {"id": "a1005e7", "name": "docs-site-3f", "proj": "docs", "kind": "i", "st": "working", "act": "Editing index.md", "note": "", "age": 120, "up": 400, "rex": 1, "agent": "codex"},
-    {"id": "a1001e7", "name": "ml-eval-5d", "proj": "ml", "kind": "i", "st": "working", "act": "Reading train.py", "note": "", "age": 660, "up": 900, "rex": 1, "agent": "grok"},
-    {"id": "a1006e7", "name": "ci-cleanup-8b", "proj": "infra", "kind": "i", "st": "done", "act": "Finished", "note": "", "age": 60, "up": 3000, "rex": 1},
-    {"id": "a1002e7", "name": "landing-page-5b", "proj": "web", "kind": "i", "st": "idle", "act": "Waiting for a task", "note": "", "age": 1560, "up": 5000, "rex": 1, "agent": "codex"},
+    {"id": "a1000e7", "name": "api-refactor-12", "proj": "api-server", "kind": "i", "st": "working", "act": "Editing main.c", "note": "", "age": 240, "up": 1200, "pane": 1},
+    {"id": "a1005e7", "name": "docs-site-3f", "proj": "docs", "kind": "i", "st": "working", "act": "Editing index.md", "note": "", "age": 120, "up": 400, "pane": 1, "agent": "codex"},
+    {"id": "a1001e7", "name": "ml-eval-5d", "proj": "ml", "kind": "i", "st": "working", "act": "Reading train.py", "note": "", "age": 660, "up": 900, "pane": 1, "agent": "grok"},
+    {"id": "a1006e7", "name": "ci-cleanup-8b", "proj": "infra", "kind": "i", "st": "done", "act": "Finished", "note": "", "age": 60, "up": 3000, "pane": 1},
+    {"id": "a1002e7", "name": "landing-page-5b", "proj": "web", "kind": "i", "st": "idle", "act": "Waiting for a task", "note": "", "age": 1560, "up": 5000, "pane": 1, "agent": "codex"},
 ]
 
 # Each scene: what to do to the preview (JS), and to the simulator (a list of commands; a number is a pause).
@@ -116,7 +116,7 @@ SCENES = [
      "sim": ["#theme inverted", "#lock", "t"], "wait": 300},
     {"name": "inverted-zoo-needs-you", "js": S_js('S.theme = "inverted";' + OPEN_ZOO + " b.needsYou(now); S.sel = 0;"),
      "sim": ["#theme inverted", "#mode zoo", ("needs", 0)], "wait": 600},
-    {"name": "toast", "js": S_js('window.__b; S.toast = { text: "Focusing in Rex", until: now + 5000 }; ' + OPEN_ZOO), "sim": ["#mode zoo", ("tap_center",)], "wait": 350},
+    {"name": "toast", "js": S_js('window.__b; S.toast = { text: "Opening its terminal", until: now + 5000 }; ' + OPEN_ZOO), "sim": ["#mode zoo", ("tap_center",)], "wait": 350},
 ]
 
 SQUARE_ONLY = {

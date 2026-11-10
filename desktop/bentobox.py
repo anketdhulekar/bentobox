@@ -50,6 +50,32 @@ def find_bin(name, configured):
     return name
 
 
+def focus_pane(a, rex, herdr):
+    """Brings the agent's terminal pane to the front, in Rex or in Herdr, whichever Agent.app picks. Raises if it can't."""
+    app = a.app()
+    if app == "rex":
+        rex.focus(a.rex_session, a.rex_block)
+    elif app == "herdr":
+        herdr.focus(a.hc_terminal)
+    else:
+        raise RuntimeError("no terminal pane known")
+
+
+def pane_place(a, rex, herdr):
+    """Where the agent runs, for its details card. It runs no process: it's called under the zoo's lock."""
+    app = a.app()
+    if app == "rex":
+        return rex.where(a.rex_session)
+    if app == "herdr":
+        return herdr.where(a.hc_terminal)
+    return "No terminal known"
+
+
+def find_tools(cfg):
+    for key, name in (("claude_bin", "claude"), ("rex_bin", "rex"), ("hc_bin", "hc"), ("herdr_app_bin", "herdr-app")):
+        cfg[key] = find_bin(name, cfg[key])
+
+
 def host_name():
     """This Mac's name; the board shows it in Settings."""
     try:
@@ -86,8 +112,7 @@ def nudge(cfg):
 
 def cmd_init(_args, _store=None):
     cfg = config.load_config()
-    cfg["claude_bin"] = find_bin("claude", cfg["claude_bin"])
-    cfg["rex_bin"] = find_bin("rex", cfg["rex_bin"])
+    find_tools(cfg)
     config.save_config(cfg)
     print(f"Config: {config.config_path()} (readable only by you)")
     print("Next: bentobox.py set-key toggl, bentobox.py set-key speech, bentobox.py set-org <id>")
@@ -203,6 +228,7 @@ def cmd_status(_args, _store=None):
 
 def cmd_run(args, store=None):
     # Imported here so that the other commands start fast and need nothing from these.
+    from agents.herdr import Herdr
     from agents.rex import Rex
     from agents.sources import poller
     from agents.zoo import Zoo
@@ -216,29 +242,29 @@ def cmd_run(args, store=None):
 
     rotate_log(LOG)  # (launchd writes it; a run in a terminal leaves it alone unless it's grown)
     cfg = config.load_config()
-    cfg["claude_bin"] = find_bin("claude", cfg["claude_bin"])
-    cfg["rex_bin"] = find_bin("rex", cfg["rex_bin"])
+    find_tools(cfg)
     for url in (cfg["toggl_api"], cfg["stt_url"]):
         if not is_safe_url(url):
             sys.exit(f"{url} isn't HTTPS, and API keys don't go over plain HTTP. Fix the config.")
-    zoo, rex, stop = Zoo(), Rex(cfg["rex_bin"]), threading.Event()
+    zoo, stop = Zoo(), threading.Event()
+    rex, herdr = Rex(cfg["rex_bin"]), Herdr(cfg["hc_bin"], cfg["herdr_app_bin"])
 
     def on_tap(agent_id, source):
         a = zoo.find(agent_id)
         if not a:
             return False
-        if not a.rex_block:
-            log(f"tap ({source}): {a.label()} has no Rex pane")
+        if not a.app():
+            log(f"tap ({source}): {a.label()} has no terminal pane")
             return False
         try:
-            rex.focus(a.rex_session, a.rex_block)
+            focus_pane(a, rex, herdr)
             log(f"tap ({source}): focused {a.label()}")
             return True
         except Exception as e:
             log(f"tap ({source}): couldn't focus {a.label()}: {e}")
             return False
 
-    where_of = lambda a: rex.where(a.rex_session) if a.rex_block else "Not in Rex"  # noqa: E731
+    where_of = lambda a: pane_place(a, rex, herdr)  # noqa: E731
     backend = None
     if args.no_display:
         # Only the agents and local HTTP: no Keychain, no Toggl, no Bluetooth. Saved work waits for a normal run.
@@ -253,7 +279,7 @@ def cmd_run(args, store=None):
     except OSError:
         sys.exit(f"Port {cfg['http_port']} is in use: is Bentobox already running? (bentobox.py status)")
     threading.Thread(target=httpd.serve_forever, daemon=True, name="http").start()
-    threading.Thread(target=poller, args=(zoo, cfg, stop, rex), daemon=True, name="agents").start()
+    threading.Thread(target=poller, args=(zoo, cfg, stop, rex, herdr), daemon=True, name="agents").start()
     tcp = cfg["link"] == "tcp"
     if backend:
         backend.start()

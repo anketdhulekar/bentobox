@@ -8,6 +8,7 @@ import helpers
 from helpers import Clock, FakeLink, HomeCase, connect, disconnect, make_backend
 
 from agents import rex as rex_mod
+from agents.herdr import Herdr
 from agents import sources
 from agents.sync import CHANGES_BYTES, LOOK_EVERY_S, OVERDUE_S, AgentSync
 from agents.zoo import MAX_AGENTS, Agent, Zoo, short_id
@@ -158,7 +159,7 @@ class WholeList(Case):
     def test_a_row_leaves_out_what_is_empty(self):
         self.agent(0)
         row = self.whole_list()[0]["rows"][0]
-        self.assertEqual(set(row), {"id", "name", "proj", "kind", "st", "act"})  # no note, where, rex, subs, age or up
+        self.assertEqual(set(row), {"id", "name", "proj", "kind", "st", "act"})  # no note, where, pane, subs, age or up
         self.clock.advance(5)
         self.backend.on_message({"t": "resync"})
         row = self.backend.agents_due()["rows"][0]
@@ -1038,9 +1039,11 @@ class RexAtScale(unittest.TestCase):
         rex = self.Counting()
         stop = mock.Mock()
         stop.is_set.side_effect = [False, True]
+        herdr, hc_calls = Herdr("hc", "herdr-app"), []
+        herdr._run = lambda *args, **kw: hc_calls.append(args) or "{}"
         with mock.patch.multiple(sources, poll_agents=lambda _: ([], True), codex_windows=lambda: [], grok_windows=lambda: []):
-            sources.poller(Zoo(), {"claude_bin": "claude", "poll_seconds": 10}, stop, rex)
-        self.assertEqual(rex.calls, [])
+            sources.poller(Zoo(), {"claude_bin": "claude", "poll_seconds": 10}, stop, rex, herdr)
+        self.assertEqual((rex.calls, hc_calls), ([], []))  # nor an hc command: it could start hc's server
 
     def test_the_poller_reads_the_session_labels_with_an_agent_in_rex(self):
         rex = self.Counting()
@@ -1049,7 +1052,7 @@ class RexAtScale(unittest.TestCase):
         stop = mock.Mock()
         stop.is_set.side_effect = [False, True]
         with mock.patch.multiple(sources, poll_agents=lambda _: ([], False), codex_windows=lambda: [], grok_windows=lambda: []):
-            sources.poller(zoo, {"claude_bin": "claude", "poll_seconds": 10}, stop, rex)
+            sources.poller(zoo, {"claude_bin": "claude", "poll_seconds": 10}, stop, rex, Herdr("hc", "herdr-app"))
         self.assertIn(("ls", "--json"), rex.calls)
         self.assertEqual(rex.where("session:1"), "Rex session “work”")
 

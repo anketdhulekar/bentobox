@@ -31,11 +31,11 @@ ROOT = os.path.dirname(os.path.dirname(SIMDIR))
 VECTORS = os.path.join(ROOT, "protocol", "samples", "vectors.json")
 
 SAMPLE_AGENTS = [
-    {"id": "a1000e7", "name": "api-refactor-12", "proj": "api-server", "kind": "i", "st": "working", "act": "Editing main.c", "note": "", "age": 240, "up": 1200, "rex": 1, "where": "Rex session work"},
-    {"id": "a1005e7", "name": "docs-site-3f", "proj": "docs", "kind": "i", "st": "working", "act": "Editing index.md", "note": "", "age": 120, "up": 400, "rex": 1, "agent": "codex"},
-    {"id": "a1001e7", "name": "ml-eval-5d", "proj": "ml", "kind": "b", "st": "working", "act": "Reading train.py", "note": "", "age": 660, "up": 900, "rex": 0, "agent": "grok"},
-    {"id": "a1006e7", "name": "ci-cleanup-8b", "proj": "infra", "kind": "i", "st": "done", "act": "Finished", "note": "All green", "age": 60, "up": 3000, "rex": 1, "subs": [{"id": "9f8e7d6c", "type": "Explore", "act": "Reading routes.ts"}]},
-    {"id": "a1002e7", "name": "landing-page-5b", "proj": "web", "kind": "i", "st": "idle", "act": "Waiting for a task", "note": "", "age": 1560, "up": 5000, "rex": 1, "agent": "codex"},
+    {"id": "a1000e7", "name": "api-refactor-12", "proj": "api-server", "kind": "i", "st": "working", "act": "Editing main.c", "note": "", "age": 240, "up": 1200, "pane": 1, "where": "Rex session work"},
+    {"id": "a1005e7", "name": "docs-site-3f", "proj": "docs", "kind": "i", "st": "working", "act": "Editing index.md", "note": "", "age": 120, "up": 400, "pane": 1, "agent": "codex"},
+    {"id": "a1001e7", "name": "ml-eval-5d", "proj": "ml", "kind": "b", "st": "working", "act": "Reading train.py", "note": "", "age": 660, "up": 900, "pane": 0, "agent": "grok"},
+    {"id": "a1006e7", "name": "ci-cleanup-8b", "proj": "infra", "kind": "i", "st": "done", "act": "Finished", "note": "All green", "age": 60, "up": 3000, "pane": 1, "subs": [{"id": "9f8e7d6c", "type": "Explore", "act": "Reading routes.ts"}]},
+    {"id": "a1002e7", "name": "landing-page-5b", "proj": "web", "kind": "i", "st": "idle", "act": "Waiting for a task", "note": "", "age": 1560, "up": 5000, "pane": 1, "agent": "codex"},
 ]
 PROJECTS = [{"id": 101, "name": "Acme", "color": "#F2C14E"}, {"id": 102, "name": "Admin", "color": "#9CA3AF"}, {"id": 123, "name": "Deep work", "color": "#4FB3F6"}, {"id": 104, "name": "Writing", "color": "#E86FA6"}]
 TASKS = [
@@ -1318,13 +1318,20 @@ class Case:
             s.cmd("#turn 1")
             s.wait_state(lambda v: v["sel"] == 0, what="round again")
         s.settle(0.45)
-        # A tap focuses its Rex pane.
+        # A tap brings its terminal pane to the front, in Rex or Herdr.
         s.clear_links()
         s.cmd(f"#tap {self.base // 2} {self.base // 2}")
         m = s.wait_link(lambda m: m.get("t") == "tap", what="a tap message")
         self.eq(m["id"], "a1000e7", "its id")
-        self.eq(s.state()["toast"], "Focusing in Rex", "toast")
-        # An agent with no Rex pane says why.
+        self.eq(s.state()["toast"], "Opening its terminal", "toast")
+        # A Mac app from before Herdr calls the flag "rex": the tap still goes.
+        s.mac({"t": "agents", "rows": [dict({k: v for k, v in SAMPLE_AGENTS[0].items() if k != "pane"}, rex=1)]})
+        s.settle(0.2)
+        s.clear_links()
+        s.cmd(f"#tap {self.base // 2} {self.base // 2}")
+        m = s.wait_link(lambda m: m.get("t") == "tap", what="a tap message, with the old flag")
+        self.eq(m["id"], "a1000e7", "its id, with the old flag")
+        # An agent with no terminal pane says why.
         if self.has_knob:
             s.cmd("#turn 2")
         else:
@@ -1334,8 +1341,8 @@ class Case:
         s.settle(0.3)
         s.clear_links()
         s.cmd(f"#tap {self.base // 2} {self.base // 2}")
-        st = s.wait_state(lambda v: "Rex" in v["toast"], what="a toast")
-        self.eq(st["toast"], "Not in Rex (background agent)", "toast")
+        st = s.wait_state(lambda v: "terminal" in v["toast"], what="a toast")
+        self.eq(st["toast"], "No terminal (background agent)", "toast")
         self.check(not any(m.get("t") == "tap" for m in s.links), "no message")
         s.settle()
         s.shot("zoo-toast")
@@ -1410,7 +1417,7 @@ class Case:
         words = ["auth", "billing", "search", "mobile", "data"]
         states = ["working", "working", "idle", "working", "done"]
         def row(i, st=None):
-            return {"id": f"c{i:07x}", "name": f"{words[i % 5]}-{i}", "proj": words[i % 5], "kind": "i", "st": st or states[i % 5], "act": "Running the tests", "age": 30, "up": 300, "rex": 1}
+            return {"id": f"c{i:07x}", "name": f"{words[i % 5]}-{i}", "proj": words[i % 5], "kind": "i", "st": st or states[i % 5], "act": "Running the tests", "age": 30, "up": 300, "pane": 1}
         crowd = [row(i) for i in range(300)]
         # The whole list, in pages, with the count.
         self.mac_state(crowd)
@@ -1587,8 +1594,8 @@ class Case:
         """What the agent on screen does when something happens to it, and that nothing happens for any other."""
         s = self.s
         words = ["auth", "billing", "search", "mobile", "data"]
-        def row(i, st="working", act="Running the tests", rex=1):
-            return {"id": f"e{i:07x}", "name": f"{words[i % 5]}-{i}", "proj": "fx", "kind": "i", "st": st, "act": act, "age": 30, "up": 300, "rex": rex}
+        def row(i, st="working", act="Running the tests", pane=1):
+            return {"id": f"e{i:07x}", "name": f"{words[i % 5]}-{i}", "proj": "fx", "kind": "i", "st": st, "act": act, "age": 30, "up": 300, "pane": pane}
         def fx():
             return s.state()["fx"]
         def logged(prefix):
@@ -1695,8 +1702,8 @@ class Case:
         s.wait_log("fx tap")
         st = fx()
         self.check(st["shaking"], "it shakes")
-        self.eq(st["bubble"], "arrow", "going to Rex")
-        self.eq(s.state()["toast"], "Focusing in Rex", "toast")
+        self.eq(st["bubble"], "arrow", "going to its terminal")
+        self.eq(s.state()["toast"], "Opening its terminal", "toast")
         s.wait_state(lambda v: not v["fx"]["shaking"], timeout=2, what="the shake ending")
         s.cmd("#quiet")
 
@@ -3214,7 +3221,7 @@ def malformed_lines(rng):
         "hello": ["v", "host"],
         "clock": ["rev", "from", "seq", "for", "now", "at", "task", "timer", "pomo"],
     }
-    agent_keys = ["id", "name", "proj", "kind", "st", "act", "note", "age", "up", "rex", "where", "agent", "subs"]
+    agent_keys = ["id", "name", "proj", "kind", "st", "act", "note", "age", "up", "pane", "rex", "where", "agent", "subs"]
     def dumps(o):
         return json.dumps(o, ensure_ascii=rng.random() < 0.5, allow_nan=True)
     out = []

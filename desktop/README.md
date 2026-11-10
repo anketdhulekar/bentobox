@@ -2,7 +2,7 @@
 
 Bentobox is the backend behind your Bento boards: one app for any number of them. It runs on your Mac and does everything the board can't do alone:
 
-- **Agents:** it watches your Claude Code, Codex and Grok sessions and shows them on the board. Tapping a character brings its Rex pane to the front.
+- **Agents:** it watches your Claude Code, Codex and Grok sessions and shows them on the board. Tapping a character brings its terminal pane to the front, in Rex or Herdr.
 - **Toggl:** it turns the board's timer into Toggl entries. It contacts Toggl only when the board asks it to, so the free plan's small request limit isn't spent on syncing.
 - **Voice:** it takes the clip the board recorded, sends it to speech-to-text, and returns the text.
 - **Keys:** your API keys stay in the macOS Keychain and never reach the board.
@@ -173,7 +173,7 @@ env HOME=<temp> desktop/.venv/bin/python desktop/bentobox.py run --no-display
 |---|---|
 | `bentobox.py` | The commands |
 | `backend.py` | Routes messages between the board and everything else |
-| `agents/` | Agent tracking, Rex, the hook script, and what each connection's board holds of the agents |
+| `agents/` | Agent tracking, Rex and Herdr, the hook script, and what each connection's board holds of the agents |
 | `toggl/` | The Toggl client and the run manager |
 | `speech/` | Joins and decodes audio, and calls speech-to-text |
 | `link/` | Bluetooth and TCP links, and the message format |

@@ -120,9 +120,9 @@ def ps_table():
 def grok_proc(row=None):
     """The Grok window that runs this hook: (pid, has a terminal), from the nearest `grok` ancestor.
 
-    The Grok app in a terminal runs hooks as its own children, with its environment (so the Rex pane is the
-    window's). A Grok without a terminal (`grok host-server`, shared by several sessions) gives no pid, and
-    its Rex pane may be stale: then the app matches the session by ~/.grok/active_sessions.json.
+    The Grok app in a terminal runs hooks as its own children, with its environment (so the Rex pane or Herdr
+    terminal is the window's). A Grok without a terminal (`grok host-server`, shared by several sessions) gives no
+    pid, and its pane may be stale: then the app matches the session by ~/.grok/active_sessions.json.
     row: pid -> (ppid, tty, comm) or None; by default, from one ps_table()."""
     row = row or ps_table().get
     pid = os.getppid()
@@ -145,7 +145,7 @@ def codex_proc(row=None):
     of them: the same process the app takes as the window (window_pids in sources.py).
 
     Codex often runs hooks in its shared background process (no terminal), whose environment holds the
-    Rex pane it was started from, long ago. Then the app finds the session's own Codex window."""
+    Rex pane or Herdr terminal it was started from, long ago. Then the app finds the session's own Codex window."""
     row = row or ps_table().get
     pid, found, found_tty = os.getppid(), 0, ""
     for _ in range(10):
@@ -186,6 +186,7 @@ def build(event, env, agent="claude"):
         "entrypoint": env.get("CLAUDE_CODE_ENTRYPOINT", ""),
         "rex_session": env.get("REX_SESSION", ""),
         "rex_block": env.get("REX_BLOCK", ""),
+        "hc_terminal": env.get("HC_TERMINAL_ID", ""),
     }
     if agent in ("codex", "grok"):
         out["agent"] = agent
@@ -230,16 +231,16 @@ def main():
         out = build(event, os.environ, agent)
         if agent == "grok":
             pid, window = grok_proc()
-            if window:  # the Grok app in a terminal: its pid and Rex pane are the session's
+            if window:  # the Grok app in a terminal: its pid and pane are the session's
                 out["pid"] = pid
-            else:       # a shared Grok process: its Rex pane may be stale; the app matches the session
-                out["rex_session"] = out["rex_block"] = ""
+            else:       # a shared Grok process: its pane may be stale; the app matches the session
+                out["rex_session"] = out["rex_block"] = out["hc_terminal"] = ""
         elif agent == "codex":
             pid, window = codex_proc()
-            if window:  # Codex runs the hook in its window: its pid and Rex pane are the session's
+            if window:  # Codex runs the hook in its window: its pid and pane are the session's
                 out["pid"] = pid
-            else:       # in the shared background process: its Rex pane is stale; the app matches a window
-                out["rex_session"] = out["rex_block"] = ""
+            else:       # in the shared background process: its pane is stale; the app matches a window
+                out["rex_session"] = out["rex_block"] = out["hc_terminal"] = ""
         body = json.dumps(out).encode()
         port = int(os.environ.get("BENTOBOX_PORT") or os.environ.get("BENTO_PORT") or "47824")
         req = urllib.request.Request(f"http://127.0.0.1:{port}/hook", data=body,

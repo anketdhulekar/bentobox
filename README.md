@@ -46,7 +46,7 @@ The protocol between the two is in [protocol/PROTOCOL.md](protocol/PROTOCOL.md).
   - a [Toggl](https://toggl.com/) account with an API key, for time tracking;
   - an OpenAI API key, for speech-to-text;
   - Claude Code, Codex or Grok, for the agents to show;
-  - Rex, a terminal app, for jumping to an agent's pane. Without it, agents still show.
+  - Rex or Herdr, terminal apps, for jumping to an agent's pane. Without either, agents still show. With Herdr, a tap opens its window if none is open.
 
 ## First steps
 

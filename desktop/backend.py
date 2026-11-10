@@ -204,7 +204,7 @@ class Backend:
         elif kind == "clock":
             self._on_clock(msg, b)
         elif kind == "tap":
-            if isinstance(msg.get("id"), str):  # focusing runs rex and osascript: don't hold up the link
+            if isinstance(msg.get("id"), str):  # focusing runs rex or herdr-app, and can wait for Herdr to open: don't hold up the link
                 threading.Thread(target=self.on_tap, args=(msg["id"], "board"), daemon=True).start()
         elif kind == "fetch":
             self._on_fetch(msg, b)

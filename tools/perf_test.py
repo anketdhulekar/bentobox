@@ -93,7 +93,7 @@ TASKS = [{"desc": d, "task_id": 0, "project": PROJECTS[i % len(PROJECTS)]} for i
 STATES = ["working", "working", "idle", "done", "working"]  # none that need you: that pulses (idle.needs measures it)
 AGENTS = [{"id": f"{0xa0000000 + i * 7919:08x}", "name": f"agent-{i:02d}", "proj": PROJECT_NAMES[i % 14].lower(),
            "kind": "i" if i % 3 else "b", "st": STATES[i % len(STATES)], "act": "Editing main.c", "age": 30 + i,
-           "up": 600 + i * 60, "rex": 1} for i in range(30)]
+           "up": 600 + i * 60, "pane": 1} for i in range(30)]
 
 
 # ---- The stand-in Mac -------------------------------------------------------------------------------------------------

@@ -6,9 +6,10 @@ Sources:
     fallback (only safe fields are read; never the .key files)
   * the Codex windows (`codex` processes with a terminal) and the Grok windows (~/.grok/active_sessions.json: only the
     session id, the pid, the start time and the folder's name are read), every few seconds
-  * the labels of the Rex panes that hold agents (`rex block ls`: only the pane's id and label are kept), every few
-    seconds: a pane someone named gives its agent that name
-See sources.py and rex.py for how each is read.
+  * the labels of the Rex panes that hold agents (`rex block ls`: only the pane's id and label are kept), and the names
+    of the Herdr terminals that do (`hc ls`: only the address, the name and the `where` label), every few seconds: a pane
+    or terminal someone named gives its agent that name
+See sources.py, rex.py and herdr.py for how each is read.
 """
 import hashlib
 import json
@@ -16,6 +17,7 @@ import os
 import threading
 import time
 
+from agents.herdr import TERMINAL_ID as HC_TERMINAL_ID
 from agents.rex import BLOCK_ID as REX_BLOCK_ID, SESSION_ID as REX_SESSION_ID
 from agents.sources import match_codex, pid_alive, window_alive
 from link.framing import VERSION
@@ -65,6 +67,9 @@ def clean_event(ev):
     if isinstance(block, str) and REX_BLOCK_ID.fullmatch(block):
         out["rex_block"] = block
         out["rex_session"] = session if isinstance(session, str) and REX_SESSION_ID.fullmatch(session) else ""
+    terminal = ev.get("hc_terminal")
+    if isinstance(terminal, str) and HC_TERMINAL_ID.fullmatch(terminal):
+        out["hc_terminal"] = terminal
     return out
 
 
@@ -86,7 +91,7 @@ class Agent:
         self.sid = sid
         self.id = short_id(sid)
         self.name = ""
-        self.pane_name = ""        # the name someone gave its Rex pane
+        self.pane_name = ""        # the name someone gave its Rex pane or Herdr terminal
         self.title = ""
         self.project = ""
         self.kind = "interactive"
@@ -97,6 +102,7 @@ class Agent:
         self.started = now
         self.rex_session = ""
         self.rex_block = ""
+        self.hc_terminal = ""      # its Herdr terminal: hc's address for it, such as "t7"
         self.subs = {}             # agent_id -> {"type", "activity"}
         self.last_hook = 0.0
         self.last_seen = now
@@ -116,6 +122,25 @@ class Agent:
     def label(self):
         return self.pane_name or self.name or self.title or self.project or self.sid[:8]
 
+    def app(self):
+        """Where a tap brings it to the front: "rex", "herdr", or "" for nowhere. Rex comes first when it has both: hc
+        gives its terminals a clean environment, so no Rex id is left over in one, but a Rex pane can inherit
+        HC_TERMINAL_ID from the terminal that started Rex."""
+        return "rex" if self.rex_block else "herdr" if self.hc_terminal else ""
+
+    def pane_id(self):
+        """The id of its Rex pane or Herdr terminal, whichever app() picks, or ""."""
+        return {"rex": self.rex_block, "herdr": self.hc_terminal}.get(self.app(), "")
+
+    def take_pane(self, ids):
+        """Takes the pane that these ids name (a hook event, a window, or pane_env in sources.py). They all come from
+        one process's environment, so they replace both the Rex pane and the Herdr terminal it had: a session resumed
+        in Herdr leaves its old Rex pane. Ids that name no pane, such as a shared Codex process's, change nothing."""
+        if ids.get("rex_block") or ids.get("hc_terminal"):
+            self.rex_block = ids.get("rex_block") or ""
+            self.rex_session = (ids.get("rex_session") or "") if self.rex_block else ""
+            self.hc_terminal = ids.get("hc_terminal") or ""
+
     def public(self, now, where=""):
         return {
             "id": self.id,
@@ -127,7 +152,7 @@ class Agent:
             "note": short(self.notice, 64),
             "age": int(now - self.since),
             "up": int(now - self.started),
-            "rex": 1 if self.rex_block else 0,
+            "pane": 1 if self.app() else 0,
             "where": short(where, 60),
             "subs": [{"id": short_id(k), "type": short(v["type"], 24), "act": short(v["activity"], 48)}
                      for k, v in list(self.subs.items())[:MAX_SUBS]],
@@ -136,7 +161,8 @@ class Agent:
 
     def snapshot(self):
         """What a row shows, apart from `where`, `age` and `up`, as the zoo compares it to see that something changed."""
-        return (self.label(), self.project, self.kind, self.state, self.activity, self.notice, self.rex_block, self.agent,
+        return (self.label(), self.project, self.kind, self.state, self.activity, self.notice, self.rex_block,
+                self.hc_terminal, self.agent,
                 sorted((str(k), v["type"], v["activity"]) for k, v in self.subs.items()) if self.subs else None)
 
 
@@ -197,8 +223,7 @@ class Zoo:
                 if ev.get("pid"):
                     a.pid = int(ev["pid"])
                     a.window = a.window or kind == "grok"  # a Grok hook names its window (the agent's key)
-            if ev.get("rex_block"):
-                a.rex_session, a.rex_block = ev.get("rex_session") or "", ev["rex_block"]
+            a.take_pane(ev)
             agent_id = ev.get("agent_id")
             if agent_id and event not in ("SubagentStart", "SubagentStop"):
                 sub = a.subs.setdefault(agent_id, {"type": ev.get("agent_type") or "subagent", "activity": "Working"})
@@ -320,8 +345,7 @@ class Zoo:
                         a.last_hook = max(a.last_hook, old.last_hook)
                         del self.agents[session]
                     self.grok_alias[session] = key
-                if w["rex_block"]:
-                    a.rex_session, a.rex_block = w["rex_session"], w["rex_block"]
+                a.take_pane(w)
             self._bump()
 
     def sync_codex_windows(self, windows):
@@ -337,8 +361,7 @@ class Zoo:
             for sid, w in match_codex(sessions, free).items():
                 a = self.agents[sid]
                 a.pid = w["pid"]
-                if w["rex_block"]:
-                    a.rex_session, a.rex_block = w["rex_session"], w["rex_block"]
+                a.take_pane(w)
                 used.add(w["pid"])
             for w in windows:
                 if w["pid"] in used:
@@ -349,7 +372,7 @@ class Zoo:
                 a.name = f"{w['folder'] or 'codex'}-{a.id[:2]}"
                 a.started = a.since = w["started"] or now
                 a.last_hook = now
-                a.rex_session, a.rex_block = w["rex_session"], w["rex_block"]
+                a.take_pane(w)
                 a.set("idle", "Waiting for a prompt", now, "")
             self._bump()
 
@@ -407,28 +430,36 @@ class Zoo:
             self._housekeep(now)
             self._bump()
 
-    def missing_rex(self):
+    def missing_panes(self):
+        """Claude sessions with a process but no Rex pane or Herdr terminal yet: (sid, pid) for each."""
         with self.lock:
             return [(a.sid, a.pid) for a in self.agents.values()
-                    if a.pid and not a.rex_block and a.kind != "background" and a.agent == "claude"]
+                    if a.pid and not a.app() and a.kind != "background" and a.agent == "claude"]
 
-    def set_rex(self, sid, session, block):
+    def set_pane(self, sid, ids):
+        """The pane a session's process runs in (pane_env in sources.py), for a session that had none."""
         with self.lock:
             a = self.agents.get(sid)
-            if a and block and not a.rex_block:
-                a.rex_session, a.rex_block = session, block
+            if a and not a.app() and (ids.get("rex_block") or ids.get("hc_terminal")):
+                a.take_pane(ids)
                 self._bump(sid)
 
     def rex_sessions(self):
         with self.lock:
-            return {a.rex_session for a in self.agents.values() if a.rex_session and a.rex_block}
+            return {a.rex_session for a in self.agents.values() if a.rex_session and a.app() == "rex"}
+
+    def hc_terminals(self):
+        with self.lock:
+            return {a.hc_terminal for a in self.agents.values() if a.app() == "herdr"}
 
     def set_pane_names(self, names):
-        """The names of the Rex panes (Rex.pane_names). A pane that isn't listed leaves its agent's name as it is."""
+        """The names of the Rex panes and Herdr terminals (Rex.pane_names, Herdr.pane_names), by id. One that isn't
+        listed leaves its agent's name as it is."""
         with self.lock:
             for a in self.agents.values():
-                if a.rex_block in names:
-                    a.pane_name = names[a.rex_block]
+                key = a.pane_id()
+                if key and key in names:
+                    a.pane_name = names[key]
             self._bump()
 
     def tick(self):

@@ -312,14 +312,14 @@ static void zoo_tap(float u, float v, int64_t now)
     if (strip_tap(u, v, now)) return;
     if (!S.n_agents || fx_leaving()) return; // the agent that's going can't be reached, and the next isn't showing yet
     const agent_t *a = &S.agents[S.sel];
-    fx_on_tap(a->a.rex);
-    if (!a->a.rex) {
-        ux_toast(a->a.background ? "Not in Rex (background agent)" : "No Rex pane known yet", 1600);
+    fx_on_tap(a->a.pane);
+    if (!a->a.pane) {
+        ux_toast(a->a.background ? "No terminal (background agent)" : "No terminal known yet", 1600);
         ux_feedback(FB_BUMP);
         return;
     }
     const bool sent = link_send_tap(a->a.id);
-    ux_toast(sent ? "Focusing in Rex" : "No Mac", 1600);
+    ux_toast(sent ? "Opening its terminal" : "No Mac", 1600);
     ux_feedback(sent ? FB_TAP : FB_BUMP);
 }
 

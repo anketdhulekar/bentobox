@@ -182,7 +182,7 @@ Bentobox watches your Claude Code, Codex and Grok sessions and shows them on the
 | An agent at work | Hold for its details | Finished: confetti |
 
 - **Turn the knob, or swipe left or right,** for the next agent. The dots underneath show the others' status, and the count says where you are, like `1 / 5`. With hundreds of agents the dots become an endless strip: spin the knob faster to go further, or on the Square drag sideways to scrub and flick.
-- **Tap** the character to bring its terminal pane to the front in [Rex](../README.md#what-you-need). An agent running in the background has no pane.
+- **Tap** the character to bring its terminal pane to the front, in [Rex or Herdr](../README.md#what-you-need). If Herdr has no window open, it opens. An agent running in the background has no pane.
 - **Hold** for its details card: what it's doing, its subagents, when it started and where it runs. Tap to close it.
 - The agent on screen celebrates when it finishes, goes up in a puff of smoke when it ends, and dozes when it's idle.
 - **Auto-scroll,** in Settings › Agents, moves to the next agent every 8 seconds. After you pick one yourself, it waits 20 seconds. Agents that need you come first.

@@ -56,7 +56,7 @@ The whole list, after `board` on each connection and after `resync`:
 
 ```json
 {"t":"agents","page":0,"pages":12,"rows":[
-  {"id":"a1b2c3d4","name":"api-refactor-12","proj":"api-server","kind":"i","st":"working","act":"Editing main.c","note":"","age":34,"up":3120,"rex":1,"where":"Rex session “work”","subs":[{"id":"9f8e7d6c","type":"Explore","act":"Reading docs"}]}
+  {"id":"a1b2c3d4","name":"api-refactor-12","proj":"api-server","kind":"i","st":"working","act":"Editing main.c","note":"","age":34,"up":3120,"pane":1,"where":"Rex session “work”","subs":[{"id":"9f8e7d6c","type":"Explore","act":"Reading docs"}]}
 ]}
 ```
 
@@ -72,7 +72,7 @@ What changed, at any time after that:
 | `rows` | Whole agents, each replacing what the board held under that `id`. An `id` it hasn't seen goes at the end. |
 | `gone` | The `id`s of agents that ended. Only in changes. |
 
-A row's fields: `id` is 8 hex digits and picks the costume. `kind` is `i` or `b`. `st` is `working`, `needs`, `done`, `idle` or `failed`. `name` is at most 40 characters and `act` at most 48. `age` and `up` are seconds, as of when the row is sent. `rex` is `1` if a tap can focus the pane. `agent` is `"codex"` or `"grok"`, and is missing for Claude. `subs` holds at most 6. Any field that's empty, zero or missing means the same thing, so a sender can leave them out.
+A row's fields: `id` is 8 hex digits and picks the costume. `kind` is `i` or `b`. `st` is `working`, `needs`, `done`, `idle` or `failed`. `name` is at most 40 characters and `act` at most 48. `age` and `up` are seconds, as of when the row is sent. `pane` is `1` if a tap can bring the agent's terminal pane to the front, in Rex or Herdr. A board also takes `rex`, its name from Mac apps before Herdr. `where` says where it runs, such as `Rex session “work”` or `Herdr “bentobox / 1”`. `agent` is `"codex"` or `"grok"`, and is missing for Claude. `subs` holds at most 6. Any field that's empty, zero or missing means the same thing, so a sender can leave them out.
 
 Rules for the Mac:
 
@@ -193,7 +193,7 @@ The board's list of agents doesn't match `n` in `state`, so it asks for the whol
 {"t":"tap","id":"a1b2c3d4"}
 ```
 
-A tap on a character: focus that agent's Rex pane. Only ids from the app's own list are accepted, and they reach `rex` as arguments, never through a shell.
+A tap on a character: bring that agent's terminal pane to the front, in Rex or Herdr. With no Herdr window open, the Mac opens Herdr first. Only ids from the app's own list are accepted, and they reach `rex` or `herdr-app` as arguments, never through a shell.
 
 ### `toggl`
 

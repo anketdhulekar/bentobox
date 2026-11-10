@@ -13,6 +13,7 @@ from helpers import Clock, HomeCase
 import config
 import fields
 from agents import zoo as zoo_mod
+from agents.herdr import Herdr
 from agents.rex import Rex, applescript_string
 from agents.sources import pid_alive
 from agents.zoo import MAX_AGENTS, MAX_STORED, Zoo
@@ -100,6 +101,13 @@ class HookEvents(unittest.TestCase):
         self.assertEqual(self.zoo.agents["s1"].rex_block, "")
         self.zoo.on_hook(ev("PreToolUse", rex_block="block:7", rex_session="--json"))
         self.assertEqual((self.zoo.agents["s1"].rex_block, self.zoo.agents["s1"].rex_session), ("block:7", ""))
+
+    def test_ids_that_arent_hc_addresses_are_dropped(self):
+        for bad in ("-C", "--json", "t7; rm -rf ~", "vps/t7", "review", "t", "t" + "1" * 40, 7, ["t7"]):
+            self.zoo.on_hook(ev("PreToolUse", sid="h", hc_terminal=bad))
+            self.assertEqual(self.zoo.agents["h"].hc_terminal, "", bad)
+        self.zoo.on_hook(ev("PreToolUse", sid="h", hc_terminal="t1b"))
+        self.assertEqual(self.zoo.agents["h"].hc_terminal, "t1b")
 
     def test_a_session_id_too_long_or_empty_is_ignored(self):
         self.zoo.on_hook(ev("UserPromptSubmit", sid="x" * 65))
@@ -242,6 +250,18 @@ class SmallerPieces(HomeCase):
         self.assertEqual(calls, [])
         rex.pane_names({"-s", "session:2"})
         self.assertEqual([a[3] for a in calls if a[:2] == ("block", "ls")], ["session:2"])  # "-s" never listed
+
+    def test_herdr_never_gets_an_option_for_an_id(self):
+        calls = []
+        herdr = Herdr("/bin/false", "/bin/false")
+        herdr._run = lambda *args, **kw: calls.append(args) or "{}"
+        herdr._show_app = lambda: calls.append(("open",))
+        for bad in ("-C", "--json", "vps/t7", "review", "", None):
+            with self.assertRaises(RuntimeError):
+                herdr.focus(bad)
+        self.assertEqual(calls, [])
+        self.assertEqual(herdr.pane_names({"--json", "-h"}), {})
+        self.assertEqual(calls, [])
 
     def test_tcp_stays_on_this_mac(self):
         self.assertTrue(host_allowed({"display_host": "127.0.0.1"}))

@@ -94,6 +94,12 @@ static int64_t get_i64(const cJSON *obj, const char *key, int64_t def)
     return (int64_t)d;
 }
 
+// A yes or no, sent as a number (1) or as true.
+static bool flag(const cJSON *obj, const char *key)
+{
+    return get_i64(obj, key, 0) != 0 || cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(obj, key));
+}
+
 static int32_t clamp_i32(int64_t v, int32_t lo, int32_t hi)
 {
     return v < lo ? lo : v > hi ? hi : (int32_t)v;
@@ -267,7 +273,7 @@ static void parse_agent(const cJSON *it, link_agent_t *a)
     const char *agent = get_str(it, "agent");
     a->kind = !strcmp(agent, "codex") ? KIND_CODEX : !strcmp(agent, "grok") ? KIND_GROK : KIND_CLAUDE;
     a->background = get_str(it, "kind")[0] == 'b';
-    a->rex = get_i64(it, "rex", 0) != 0 || cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(it, "rex"));
+    a->pane = flag(it, "pane") || flag(it, "rex"); // "rex": its name from a Mac app before Herdr
     a->age_s = clamp_i32(get_i64(it, "age", 0), 0, 100000000);
     a->up_s = clamp_i32(get_i64(it, "up", 0), 0, 100000000);
     const cJSON *subs = cJSON_GetObjectItemCaseSensitive(it, "subs"), *s;

@@ -16,6 +16,8 @@ DEFAULTS = {
     "poll_seconds": 10,
     "claude_bin": "",
     "rex_bin": "",
+    "hc_bin": "",                 # Herdr's command line, for the names of the terminals that hold agents
+    "herdr_app_bin": "",          # the Herdr app's command line, to show an agent's terminal
     "toggl_org": 0,               # the Toggl organization id (not a secret)
     "toggl_api": "https://focus.toggl.com/api",
     "stt_url": "https://api.openai.com/v1/audio/transcriptions",

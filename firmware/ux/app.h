@@ -408,7 +408,7 @@ void fx_tick(void);
 void fx_on_row(const agent_t *a, int was_st, bubble_t was_icon); // was_st: -1 if it's new
 void fx_on_gone(const agent_t *a); // before it leaves the list
 void fx_after_removal(void);
-void fx_on_tap(bool rex);
+void fx_on_tap(bool pane);
 const agent_t *fx_leaving(void);   // the copy of the agent that's going, while it shows
 bool fx_poofed(void);              // it's gone in the smoke: draw no character
 bubble_t fx_activity_icon(const char *act);

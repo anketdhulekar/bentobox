@@ -338,7 +338,7 @@ void fx_after_removal(void)
     memcpy(X.after, a ? a->a.id : "", a ? sizeof X.after : 1);
 }
 
-void fx_on_tap(bool rex)
+void fx_on_tap(bool pane)
 {
     if (!visible() || X.leaving) return;
     follow();
@@ -346,7 +346,7 @@ void fx_on_tap(bool rex)
     X.shake = SHAKE_S;
     X.shake_age = 0;
     const bool stays = X.icon >= 0 && X.em_left < 0;
-    if (X.st != AG_NEEDS && !stays) bubble(rex ? BUBBLE_ARROW : BUBBLE_QUESTION, BUBBLE_TAP_S);
+    if (X.st != AG_NEEDS && !stays) bubble(pane ? BUBBLE_ARROW : BUBBLE_QUESTION, BUBBLE_TAP_S);
 }
 
 const agent_t *fx_leaving(void) { return X.leaving ? &X.copy : NULL; }
@@ -644,7 +644,7 @@ static void stand_in(int64_t now)
     snprintf(r.id, sizeof r.id, "fxtest");
     snprintf(r.name, sizeof r.name, "fx-test");
     snprintf(r.act, sizeof r.act, "Running the tests");
-    r.rex = true;
+    r.pane = true;
     s_quiet = true;
     zoo_agents_row(&r, now);
     zoo_agents_end(false, now);
@@ -688,7 +688,7 @@ bool fx_debug_command(const char *arg, int64_t now)
     case FX_IDLE: enter_state(a, AG_IDLE, true); break;
     case FX_WORKING: enter_state(a, AG_WORKING, true); break;
     case FX_FAILED: enter_state(a, AG_FAILED, true); break;
-    default: fx_on_tap(a->a.rex); break;
+    default: fx_on_tap(a->a.pane); break;
     }
     return true;
 }

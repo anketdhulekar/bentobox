@@ -455,16 +455,16 @@ class Desktop:
         with open(security, "w") as f:
             f.write(script)
         os.chmod(security, 0o700)
-        none = os.path.join(tools, "none")  # stands in for `claude` and `rex`: this run sees only the test's agents
+        none = os.path.join(tools, "none")  # stands in for `claude`, `rex`, `hc` and `herdr-app`: this run sees only the test's agents
         with open(none, "w") as f:
             f.write("#!/bin/sh\nexit 0\n")
         os.chmod(none, 0o755)
         cfg = {"link": link, "display_host": "127.0.0.1", "display_port": display_port, "http_port": self.http_port,
                "toggl_org": org, "toggl_api": toggl_url, "stt_url": stt_url, "security_bin": security,
-               "claude_bin": none, "rex_bin": none, "poll_seconds": 3600}
+               "claude_bin": none, "rex_bin": none, "hc_bin": none, "herdr_app_bin": none, "poll_seconds": 3600}
         with open(os.path.join(cfgdir, "config.json"), "w") as f:
             json.dump(cfg, f)
-        self.env = {k: v for k, v in os.environ.items() if not k.startswith(("REX_", "CLAUDE"))}
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith(("REX_", "HC_", "CLAUDE"))}
         self.env.update(HOME=self.home, BENTO_PORT=str(self.http_port))
         self.proc = None
         self.log_path = os.path.join(out, "desktop.log")

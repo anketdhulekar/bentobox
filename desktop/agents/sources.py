@@ -1,7 +1,8 @@
 """Where the agent list comes from, apart from the hooks: processes, session files and `claude agents --json`.
 
 Privacy: the session files give only SAFE_SESSION_FIELDS, never the .key files or the transcripts. A process's
-environment gives only REX_SESSION and REX_BLOCK. Of a working folder, only the last part is kept. Nothing here is logged.
+environment gives only REX_SESSION, REX_BLOCK and HC_TERMINAL_ID. Of a working folder, only the last part is kept. Nothing
+here is logged.
 """
 import glob
 import json
@@ -10,6 +11,8 @@ import re
 import subprocess
 import time
 
+from agents.herdr import TERMINAL_ID
+from agents.rex import BLOCK_ID, SESSION_ID
 from util import log
 
 SESSIONS_DIR = os.path.expanduser("~/.claude/sessions")
@@ -38,7 +41,7 @@ _codex_known = {}  # pid -> what codex_windows found about it, kept for as long 
 
 def codex_windows():
     """The Codex windows on this Mac (window_pids). For each: its pid, the name of its working folder (only
-    the last part), when it started, and its Rex pane (only REX_SESSION and REX_BLOCK). This runs every few seconds, so
+    the last part), when it started, and its Rex pane and Herdr terminal (pane_env). This runs every few seconds, so
     a window is looked into once, when it's first seen, and not with three processes each time."""
     out = []
     try:
@@ -59,8 +62,7 @@ def codex_windows():
         except (OSError, subprocess.SubprocessError, ValueError):
             continue
         folder = next((os.path.basename(line[1:].rstrip("/")) for line in cwd.splitlines() if line.startswith("n")), "")
-        session, block = rex_env(pid)
-        window = {"pid": pid, "folder": folder, "started": started, "rex_session": session, "rex_block": block}
+        window = {"pid": pid, "folder": folder, "started": started, **pane_env(pid)}
         if folder and started:  # else one of those lookups came back empty: try again next time
             _codex_known[pid] = window
         out.append(window)
@@ -123,13 +125,13 @@ def grok_pids(rows=None):
     return out
 
 
-_grok_rex = {}  # (pid, start) -> (Rex session, Rex block): a process's environment doesn't change
+_grok_panes = {}  # (pid, start) -> pane_env(pid): a process's environment doesn't change
 
 
-def grok_windows(path=GROK_SESSIONS, pids=None, rex_of=None):
+def grok_windows(path=GROK_SESSIONS, pids=None, pane_of=None):
     """The Grok windows on this Mac, from ~/.grok/active_sessions.json, which Grok keeps current. For each: its
-    pid, its session id, the name of its working folder (only the last part), when it started, and its Rex pane
-    (only REX_SESSION and REX_BLOCK). An entry counts only while its pid is a Grok app in a terminal."""
+    pid, its session id, the name of its working folder (only the last part), when it started, and its Rex pane and
+    Herdr terminal (pane_env). An entry counts only while its pid is a Grok app in a terminal."""
     try:
         with open(path) as f:
             rows = json.load(f)
@@ -148,13 +150,12 @@ def grok_windows(path=GROK_SESSIONS, pids=None, rex_of=None):
         if pid not in pids:
             continue
         started = start / 1e6 if start > 1e14 else start / 1e3 if start > 1e11 else start
-        if rex_of is not None:
-            rex = rex_of(pid)
+        if pane_of is not None:
+            pane = pane_of(pid)
         else:
-            rex = _grok_rex.get((pid, start)) or _grok_rex.setdefault((pid, start), rex_env(pid))
+            pane = _grok_panes.get((pid, start)) or _grok_panes.setdefault((pid, start), pane_env(pid))
         out.append({"pid": pid, "session": str(r.get("session_id") or ""), "started": started,
-                    "folder": os.path.basename(str(r.get("cwd") or "").rstrip("/")),
-                    "rex_session": rex[0], "rex_block": rex[1]})
+                    "folder": os.path.basename(str(r.get("cwd") or "").rstrip("/")), **pane})
     return out
 
 
@@ -204,39 +205,54 @@ def poll_agents(claude_bin):
         return read_session_files(), True
 
 
-REX_ENV = re.compile(r"(?:^|\s)(REX_SESSION|REX_BLOCK)=((?:session|block):[0-9A-Za-z-]+)")
+PANE_ENV = re.compile(r"(?:^|\s)(REX_SESSION|REX_BLOCK|HC_TERMINAL_ID)=(\S+)")
+PANE_IDS = {"REX_SESSION": ("rex_session", SESSION_ID), "REX_BLOCK": ("rex_block", BLOCK_ID),
+            "HC_TERMINAL_ID": ("hc_terminal", TERMINAL_ID)}
 
 
-def rex_env(pid):
-    """The Rex session and block a process runs in, from its environment (`ps eww`).
+def pane_ids(text):
+    """The Rex pane and the Herdr terminal that an environment listing names: {"rex_session", "rex_block",
+    "hc_terminal"}, with "" for any that's missing or isn't a well-formed id. Nothing else in it is read."""
+    out = dict.fromkeys(("rex_session", "rex_block", "hc_terminal"), "")
+    for name, value in PANE_ENV.findall(text):
+        key, form = PANE_IDS[name]
+        if form.fullmatch(value):
+            out[key] = value
+    return out
 
-    The output holds every environment variable, which can include secrets: only the two Rex
-    ids are kept, and nothing else is stored or logged."""
+
+def pane_env(pid):
+    """The Rex pane and the Herdr terminal a process runs in, from its environment (`ps eww`): see pane_ids.
+
+    The output holds every environment variable, which can include secrets: only the three ids are kept, and nothing
+    else is stored or logged."""
     try:
         out = subprocess.run(["ps", "eww", "-o", "command=", "-p", str(int(pid))],
                              capture_output=True, text=True, timeout=3).stdout
     except (OSError, ValueError, subprocess.SubprocessError):
-        return "", ""
-    found = dict(REX_ENV.findall(out))
+        return pane_ids("")
+    found = pane_ids(out)
     del out
-    return found.get("REX_SESSION", ""), found.get("REX_BLOCK", "")
+    return found
 
 
-def poller(zoo, cfg, stop, rex):
+def poller(zoo, cfg, stop, rex, herdr):
     looked_up = {}
     while not stop.is_set():
         try:
             rows, complete = poll_agents(cfg["claude_bin"])
             zoo.on_poll(rows, complete)
-            for sid, pid in zoo.missing_rex():  # sessions that started before the hooks were installed
+            for sid, pid in zoo.missing_panes():  # sessions that started before the hooks were installed
                 if looked_up.get(sid) != pid:
                     looked_up[sid] = pid
-                    zoo.set_rex(sid, *rex_env(pid))
+                    zoo.set_pane(sid, pane_env(pid))
             if zoo.rex_sessions():  # with no agent in Rex, no rex command: it could start a Rex server
                 rex.refresh_where()
             zoo.sync_codex_windows(codex_windows())
             zoo.sync_grok_windows(grok_windows())
-            zoo.set_pane_names(rex.pane_names(zoo.rex_sessions()))
+            names = rex.pane_names(zoo.rex_sessions())
+            names.update(herdr.pane_names(zoo.hc_terminals()))  # with no agent in hc, no hc command either
+            zoo.set_pane_names(names)
         except Exception as e:  # odd data from a tool mustn't end agent tracking
             log(f"agents: {type(e).__name__} while looking for agents")
         stop.wait(max(2, float(cfg["poll_seconds"])))
