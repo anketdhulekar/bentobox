@@ -12,7 +12,7 @@ The board and the Mac talk only over Bluetooth, using the messages in [`protocol
 
 ## Set it up
 
-You need Python 3.10 or newer (`brew install python@3.13`) and the Xcode command line tools (`xcode-select --install`). Run these from the repo root.
+You need Python 3.10 or newer (`brew install python@3.13`) and the Xcode command line tools (`xcode-select --install`). Run these from the repo root. A coding agent can walk you through them instead: ask it to follow [docs/AGENT-SETUP.md](../docs/AGENT-SETUP.md). At any point, `tools/bentobox check` lists what's set up and what's left.
 
 1. **Install what it needs.** This creates `desktop/.venv` with `bleak`, the Bluetooth library, and builds `desktop/build/Bentobox.app`:
 
@@ -39,17 +39,32 @@ You need Python 3.10 or newer (`brew install python@3.13`) and the Xcode command
    desktop/.venv/bin/python desktop/bentobox.py set-org 12345
    ```
 
-5. **Run it:**
+5. **Start it** in the background. This installs its launchd agent, so it also starts when you log in and restarts if it stops. Allow Bluetooth if macOS asks:
 
    ```sh
-   desktop/.venv/bin/python desktop/bentobox.py run
+   tools/bentobox start --dry-run     # what it would change
+   tools/bentobox start
    ```
+
+   To run it in a terminal instead, until Ctrl-C: `tools/bentobox run`.
 
 6. **Pair the board.** On the board, choose Settings › Pair a new Mac. It shows a 6-digit code on its screen for two minutes. Type that code into the dialog macOS opens. Allow Bluetooth if macOS asks. You do this once for each Mac.
 
 ## Everyday commands
 
-Use `desktop/.venv/bin/python desktop/bentobox.py` followed by:
+Start, stop and watch the app with `tools/bentobox`, the same script for you and for coding agents:
+
+| Command | What it does |
+|---|---|
+| `tools/bentobox check` | Lists what's set up and what's left, with the command for each. It never shows a key |
+| `tools/bentobox start` | Starts it in the background, at login too, and waits until it answers. `--dry-run` shows what it would change |
+| `tools/bentobox stop` | Stops it until you next log in |
+| `tools/bentobox restart` | Restarts it, after a `git pull` say |
+| `tools/bentobox status` | Whether it runs, and what it sees |
+| `tools/bentobox logs` | The end of its log; `-f` follows it |
+| `tools/bentobox run` | Runs it in this terminal until Ctrl-C |
+
+For everything else, use `desktop/.venv/bin/python desktop/bentobox.py` followed by:
 
 | Command | What it does |
 |---|---|
@@ -76,11 +91,11 @@ These commands change your setup, so read what they'll do first. `--dry-run` pri
 
   This changes `~/.claude/settings.json` and, if you have them, `~/.codex/hooks.json` and `~/.grok/hooks/bentobox.json`. It backs up each changed file and keeps your other hooks. Afterwards, run `/hooks` once in Codex to trust the new hooks. Grok asks you to trust each folder.
 
-- **launchd** starts the app when you log in and keeps it running. Click **Allow** if macOS asks whether Bentobox may use Bluetooth. The log is `~/Library/Logs/bentobox.log`.
+- **launchd** starts the app when you log in and keeps it running. `tools/bentobox start` sets it up the first time, through `install.py launchd`. Click **Allow** if macOS asks whether Bentobox may use Bluetooth. The log is `~/Library/Logs/bentobox.log`.
 
   ```sh
-  python3 desktop/install.py launchd --dry-run
-  python3 desktop/install.py launchd
+  tools/bentobox start --dry-run
+  tools/bentobox start
   ```
 
 To undo both, run `python3 desktop/install.py uninstall`. Your keys and `~/.config/bentobox` stay. To delete a key, run `security delete-generic-password -s bento -a toggl` (or `-a speech`).

@@ -56,14 +56,16 @@ The protocol between the two is in [protocol/PROTOCOL.md](protocol/PROTOCOL.md).
    tools/bento sim knob-lcd-1.8 --demo      # or amoled-2.16
    ```
 
-2. **The Mac app.** Install it, set your keys and run it; [desktop/README.md](desktop/README.md) has the details:
+2. **The Mac app.** Install it, set your keys and start it; [desktop/README.md](desktop/README.md) has the details:
 
    ```sh
    python3 desktop/install.py setup
    desktop/.venv/bin/python desktop/bentobox.py init
    desktop/.venv/bin/python desktop/bentobox.py set-key toggl    # and set-key speech
-   desktop/.venv/bin/python desktop/bentobox.py run
+   tools/bentobox start                                          # in the background, and at login
    ```
+
+   `tools/bentobox check` lists what's set up and what's left, and `tools/bentobox status`, `restart`, `stop` and `logs` look after it. Or let your coding agent walk you through all of it: ask it to follow [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
 
 3. **A board.** Every board is an ESP32-S3, so `tools/bento` flashes a board only if its MAC address matches the one listed for it in `boards.local.md` at the repo root (git ignores that file). The first `flash` without an entry prints how to read the MAC and add the line. Then back up the factory firmware once, flash, and pair:
 
@@ -86,7 +88,7 @@ The lock keeps out a passer-by; it isn't strong security, so don't reuse a real 
 desktop/.venv/bin/python -m unittest discover -s desktop/tests    # the Mac app, against fake Toggl and speech services
 make -C firmware/sim all asan && python3 firmware/sim/tests/run_tests.py    # the board UX in the simulator, both boards
 tools/bento test sim --board knob-lcd-1.8                         # end to end: the real app driving the simulator (--show to watch)
-tools/.venv/bin/python -m unittest tools/test_bento.py            # the tools, and the generated assets
+tools/.venv/bin/python -m unittest tools/test_bento.py tools/test_bentobox.py    # the tools, and the generated assets
 tools/bento perf sim                                              # each user action timed, against a baseline
 ```
 
@@ -118,7 +120,7 @@ firmware/                Bento, the board firmware
   sim/                   runs the UX on the Mac at any board's size and shape
 preview/                 the HTML design preview
 perf/                    performance baselines and history, from tools/bento perf
-tools/                   bento build, flash, sim, test and perf; the device and performance harnesses; asset generators
+tools/                   bento build, flash, sim, test and perf; bentobox start, stop and check for the Mac app; the device and performance harnesses; asset generators
 docs/
 ```
 

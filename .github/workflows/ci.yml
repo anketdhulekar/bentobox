@@ -35,7 +35,7 @@ jobs:
           python -m venv tools/.venv
           tools/.venv/bin/pip install -r tools/requirements.txt
       - name: Tools tests, and the generated assets match their sources
-        run: tools/.venv/bin/python -m unittest tools/test_bento.py
+        run: tools/.venv/bin/python -m unittest tools/test_bento.py tools/test_bentobox.py
 
   simulator:
     runs-on: macos-latest

@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""Start, stop and watch Bentobox, the Mac app. People and coding agents use this same script.
+
+   tools/bentobox check                 what's set up on this Mac and what's left to do, with the command for each.
+                                        It never shows a key or a code
+   tools/bentobox start [--dry-run]     start Bentobox in the background and wait until it answers. The first time, this
+                                        installs its launchd agent, so it also starts at login and restarts if it stops.
+                                        Click Allow if macOS asks whether Bentobox may use Bluetooth
+   tools/bentobox stop [--dry-run]      stop it. It starts again at the next login: install.py uninstall removes it
+   tools/bentobox restart [--dry-run]   stop it and start it again, for example after a git pull
+   tools/bentobox status                whether it runs, and what it sees: boards, Toggl, agents
+   tools/bentobox logs [-f]             the end of its log, or follow it. The log never holds keys or transcripts
+   tools/bentobox run [--no-display]    run it in this terminal instead, until Ctrl-C
+
+start --replace runs this copy of the repo when the launchd agent runs another one.
+
+It needs only Python's standard library, so it runs before desktop/install.py setup has made the app's Python.
+Exit codes: 0 done (for status: running), 1 failed or something left to do (for check), 3 not running (for status).
+"""
+import argparse
+import http.client
+import json
+import os
+import plistlib
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "desktop"))
+
+import config  # noqa: E402  (desktop/config.py: the port and the config file)
+import install  # noqa: E402  (desktop/install.py: the paths and the launchd agent)
+
+START_WAIT_S = 20
+NOT_RUNNING = 3
+APP_CMD = "desktop/.venv/bin/python desktop/bentobox.py"  # as people type it, from the repo root
+_no_proxy = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # 127.0.0.1 only
+
+
+def target():
+    return f"gui/{os.getuid()}/{install.LABEL}"
+
+
+def service():
+    """Bentobox's launchd agent, as launchd sees it: None if it isn't loaded, else {"state", "pid"}."""
+    res = subprocess.run(["launchctl", "print", target()], capture_output=True, text=True)
+    if res.returncode != 0:
+        return None
+    state = re.search(r"^\tstate = (.+)$", res.stdout, re.M)  # one tab: the job's own, not a nested one's
+    pid = re.search(r"^\tpid = (\d+)$", res.stdout, re.M)
+    return {"state": state.group(1).strip() if state else "unknown", "pid": int(pid.group(1)) if pid else 0}
+
+
+def installed_copy():
+    """The bentobox.py that the installed launchd agent runs, or "" if none is installed."""
+    try:
+        with open(install.PLIST, "rb") as f:
+            args = plistlib.load(f).get("ProgramArguments") or []
+    except (OSError, ValueError):
+        return ""
+    return next((str(a) for a in args if str(a).endswith("bentobox.py")), "")
+
+
+def another_copy():
+    """The other clone's bentobox.py, if the launchd agent runs one that isn't this one."""
+    found = installed_copy()
+    return found if found and os.path.realpath(found) != os.path.realpath(install.APP_SCRIPT) else ""
+
+
+def port():
+    return int(config.load_config()["http_port"])
+
+
+def answering(p):
+    """Whether Bentobox answers on its local port (something else there doesn't count)."""
+    try:
+        with _no_proxy.open(f"http://127.0.0.1:{p}/state", timeout=1) as r:
+            return isinstance(json.load(r).get("agents"), list)
+    except (OSError, ValueError, AttributeError, http.client.HTTPException):
+        return False
+
+
+def wait_until_answering(p, wait=None):
+    deadline = time.monotonic() + (START_WAIT_S if wait is None else wait)
+    while not answering(p):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.5)
+    return True
+
+
+def log_tail(lines=20):
+    try:
+        with open(install.LOG, errors="replace") as f:
+            return "".join(f.readlines()[-lines:])
+    except OSError:
+        return ""
+
+
+def app(*args, **kw):
+    """desktop/bentobox.py, run with the app's own Python."""
+    return subprocess.run([install.VENV_PYTHON, install.APP_SCRIPT, *args], **kw)
+
+
+def ready_to_run():
+    """Exits with the step to do first, if start or run can't go yet."""
+    if not os.path.exists(install.VENV_PYTHON):
+        sys.exit("First: python3 desktop/install.py setup (the app's Python and Bentobox.app). tools/bentobox check lists every step.")
+    if not os.path.exists(install.LAUNCHER):
+        sys.exit("First: python3 desktop/install.py app (Bentobox.app). tools/bentobox check lists every step.")
+    if not os.path.exists(config.config_path()):
+        sys.exit(f"First: {APP_CMD} init (the config). tools/bentobox check lists every step.")
+
+
+def report_started(p):
+    if wait_until_answering(p):
+        svc = service() or {}
+        pid = f", pid {svc['pid']}" if svc.get("pid") else ""
+        print(f"Bentobox is running ({install.LABEL}{pid}) and answers on 127.0.0.1:{p}.")
+        return 0
+    print(f"Bentobox started but doesn't answer on 127.0.0.1:{p} after {START_WAIT_S} s. The end of its log:", file=sys.stderr)
+    print(log_tail() or f"(nothing in {install.LOG} yet)", file=sys.stderr)
+    return 1
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_start(a):
+    ready_to_run()
+    p, svc, other = port(), service(), another_copy()
+    if other and not a.replace:
+        sys.exit(f"Bentobox's launchd agent runs another copy of the repo: {other}\n"
+                 "tools/bentobox start --replace runs this one instead.")
+    if svc and svc["state"] == "running" and not other:
+        if answering(p):
+            print(f"Bentobox is already running ({install.LABEL}, pid {svc['pid']}).")
+            return 0
+        return report_started(p)  # it's still starting
+    if not svc and answering(p):
+        sys.exit(f"Something already answers on 127.0.0.1:{p}: a Bentobox running in a terminal? Stop it first (Ctrl-C there).")
+    install.install_launchd(a.dry_run)  # writes the agent for this copy, then (re)loads it
+    return 0 if a.dry_run else report_started(p)
+
+
+def cmd_stop(a):
+    if not service():
+        print("Bentobox isn't running in the background.")
+        if answering(port()):
+            print("Something answers on its port, though: a Bentobox in a terminal? Ctrl-C stops that one.")
+        return 0
+    if a.dry_run:
+        print(f"Would stop {install.LABEL}: launchctl bootout {target()}")
+        return 0
+    subprocess.run(["launchctl", "bootout", target()], capture_output=True)
+    print(f"Stopped {install.LABEL}. It starts again when you log in: python3 desktop/install.py uninstall removes it "
+          "(and the hooks).")
+    return 0
+
+
+def cmd_restart(a):
+    if not service():
+        return cmd_start(a)
+    ready_to_run()
+    other = another_copy()
+    if other:
+        sys.exit(f"Bentobox's launchd agent runs another copy of the repo: {other}\n"
+                 "tools/bentobox start --replace runs this one instead.")
+    if a.dry_run:
+        print(f"Would restart {install.LABEL}: launchctl kickstart -k {target()}")
+        return 0
+    subprocess.run(["launchctl", "kickstart", "-k", target()], capture_output=True, check=True)
+    return report_started(port())
+
+
+def cmd_status(_a):
+    p, svc = port(), service()
+    up = answering(p)
+    if svc:
+        pid = f", pid {svc['pid']}" if svc["pid"] else ""
+        print(f"Service: {svc['state']} ({install.LABEL}{pid})")
+    elif up:
+        print("Service: running in a terminal, not in the background")
+    else:
+        print("Service: not running (tools/bentobox start)")
+    if not up:
+        print(f"Bentobox doesn't answer on 127.0.0.1:{p}.")
+        return NOT_RUNNING
+    if os.path.exists(install.VENV_PYTHON):
+        sys.stdout.flush()  # before the app's own lines
+        app("status")
+    return 0
+
+
+def cmd_logs(a):
+    if not os.path.exists(install.LOG):
+        print(f"No log yet: {install.LOG}. A Bentobox run in a terminal logs there instead.")
+        return 0
+    os.execvp("tail", ["tail", "-n", "50", *(["-f"] if a.follow else []), install.LOG])
+
+
+def cmd_run(a):
+    ready_to_run()
+    if service() and answering(port()):
+        sys.exit("Bentobox already runs in the background: tools/bentobox stop first, or watch it with tools/bentobox logs -f.")
+    os.execv(install.VENV_PYTHON, [install.VENV_PYTHON, install.APP_SCRIPT, "run", *(["--no-display"] if a.no_display else [])])
+
+
+def tool_found(cfg, key, name):
+    configured = cfg.get(key) or ""
+    if configured and os.path.exists(configured):
+        return True
+    return bool(shutil.which(name)) or any(os.path.exists(os.path.expanduser(f"{d}/{name}"))
+                                          for d in ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"))
+
+
+def hooks_installed():
+    try:
+        hooks = install.load_settings().get("hooks", {})
+    except (OSError, ValueError):
+        return False
+    return isinstance(hooks, dict) and any(install.ours(e) for entries in hooks.values() if isinstance(entries, list)
+                                           for e in entries if isinstance(e, dict))
+
+
+def cmd_check(_a):
+    """Every step, done or not, and the command for the next one. Keys and the lock code are only "set" or "not set"."""
+    rows, todo = [], []
+
+    def row(mark, what, detail, fix=""):
+        rows.append((mark, what, detail))
+        if fix and mark == "todo":
+            todo.append(fix)
+        elif fix and mark == "maybe":
+            rows.append(("", "", f"  to do it: {fix}"))
+
+    has_env = os.path.exists(install.VENV_PYTHON)
+    row("ok" if has_env else "todo", "Python environment", "desktop/.venv" if has_env else "missing",
+        "python3 desktop/install.py setup")
+    has_app = os.path.exists(install.LAUNCHER)
+    row("ok" if has_app else "todo", "Bentobox.app", "desktop/build/Bentobox.app" if has_app else "missing",
+        "python3 desktop/install.py " + ("app" if has_env else "setup"))
+    has_cfg = os.path.exists(config.config_path())
+    row("ok" if has_cfg else "todo", "Config", config.config_path() if has_cfg else "missing", f"{APP_CMD} init")
+    cfg = config.load_config()
+
+    if has_env and has_cfg:
+        res = app("key-status", capture_output=True, text=True)
+        said = dict(line.split(": ", 1) for line in res.stdout.splitlines() if ": " in line)
+        for label, name in (("Toggl key", "toggl"), ("speech-to-text key", "speech")):
+            value = said.get(label, "unknown")
+            row("ok" if value == "set" else "maybe", label.capitalize(), value + ("" if value == "set" else " (optional)"),
+                f"the person types it in their own Terminal: {APP_CMD} set-key {name}")
+        lock = said.get("Lock code", "unknown")
+        row("ok" if lock.startswith("set") else "maybe", "Lock code", lock + ("" if lock.startswith("set") else " (optional)"),
+            f"the person types it in their own Terminal: {APP_CMD} lock-code set")
+
+    svc, p = service(), port()
+    up = answering(p)
+    other = another_copy()
+    if other:
+        row("todo", "Background service", f"the launchd agent runs another copy: {other}", "tools/bentobox start --replace")
+    elif up:
+        row("ok", "Background service", f"running, on 127.0.0.1:{p}" + ("" if svc else " (in a terminal, not launchd)"))
+    else:
+        row("todo", "Background service", "installed but stopped" if svc else "not running", "tools/bentobox start")
+
+    if has_env and has_cfg:
+        res = app("boards", "list", capture_output=True, text=True)
+        trusted = sum(line.startswith("Trusted:") for line in res.stdout.splitlines())
+        waiting = sum(line.startswith("Not trusted:") for line in res.stdout.splitlines())
+        detail = f"{trusted} trusted" + (f", {waiting} waiting to be trusted" if waiting else "")
+        fix = f"{APP_CMD} boards trust" if waiting else "on the board: Settings › Connectivity › Pair a new Mac"
+        row("ok" if trusted and not waiting else "maybe", "Boards", detail, fix)
+
+    row("ok" if hooks_installed() else "maybe", "Agent hooks", "installed" if hooks_installed() else "not installed (optional)",
+        "python3 desktop/install.py hooks --dry-run, then without --dry-run")
+    apps = [n for k, b, n in (("rex_bin", "rex", "Rex"), ("herdr_app_bin", "herdr-app", "Herdr")) if tool_found(cfg, k, b)]
+    row("ok" if apps else "maybe", "Taps on agents", " and ".join(apps) if apps else "neither Rex nor Herdr (optional)")
+
+    print(f"Bentobox on this Mac ({REPO})")
+    for mark, what, detail in rows:
+        print(f"  {mark:<6}{what:<20}{detail}" if what else f"  {'':<26}{detail}")
+    if todo:
+        print(f"\nNext, from the repo root: {todo[0]}")
+        return 1
+    print("\nEverything Bentobox needs is done. Optional steps are marked \"maybe\".")
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="tools/bentobox", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("check", help="what's set up and what's left to do").set_defaults(fn=cmd_check)
+    start = sub.add_parser("start", help="start it in the background, under launchd")
+    start.add_argument("--replace", action="store_true", help="run this copy when the launchd agent runs another one")
+    start.set_defaults(fn=cmd_start)
+    for name, fn, about in (("stop", cmd_stop, "stop it"), ("restart", cmd_restart, "stop it and start it again")):
+        sub.add_parser(name, help=about).set_defaults(fn=fn)
+    for name in ("start", "stop", "restart"):
+        sub.choices[name].add_argument("--dry-run", action="store_true", help="say what it would do, and do nothing")
+    sub.add_parser("status", help="whether it runs, and what it sees").set_defaults(fn=cmd_status)
+    logs = sub.add_parser("logs", help="the end of its log")
+    logs.add_argument("-f", "--follow", action="store_true", help="keep following it")
+    logs.set_defaults(fn=cmd_logs)
+    run = sub.add_parser("run", help="run it in this terminal, until Ctrl-C")
+    run.add_argument("--no-display", action="store_true", help="only the agents and local HTTP: no board, Toggl or Keychain")
+    run.set_defaults(fn=cmd_run)
+    a = ap.parse_args(argv)
+    if not hasattr(a, "replace"):
+        a.replace = False
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -77,6 +77,8 @@ The full layout is in `README.md`.
 
 ## Workflow
 
+- **Setting up a Mac:** follow `docs/AGENT-SETUP.md`. The person types every key and code themselves, in their own Terminal.
+- **Run the Mac app with `tools/bentobox`,** the script people use too: `check`, `start`, `stop`, `restart`, `status`, `logs`. `start` loads the launchd agent, so it needs the go-ahead.
 - **Preview first.** Design changes start in `preview/bento.html`. Get the maintainer's approval for visible changes before changing firmware, and keep the two in step.
 - **Then the firmware,** checked in the simulator, then the desktop app with its tests, then the docs.
 - **New behavior gets a test.**

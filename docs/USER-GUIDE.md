@@ -38,7 +38,7 @@ The pictures come from the simulator, which runs the boards' own software, so th
 tools/bento sim knob-lcd-1.8 --demo      # or amoled-2.16
 ```
 
-Then set up the Mac app. Run these from the repo root. You need Python 3.10 or newer and the Xcode command-line tools.
+Then set up the Mac app. Run these from the repo root. You need Python 3.10 or newer and the Xcode command-line tools. Or let your coding agent walk you through it: ask it to follow [AGENT-SETUP.md](AGENT-SETUP.md). `tools/bentobox check` lists what's done and what's left.
 
 1. **Install it** and create its config:
 
@@ -60,10 +60,10 @@ Then set up the Mac app. Run these from the repo root. You need Python 3.10 or n
    desktop/.venv/bin/python desktop/bentobox.py set-org 12345
    ```
 
-3. **Run it,** and allow Bluetooth if macOS asks:
+3. **Start it,** and allow Bluetooth if macOS asks. It runs in the background, starts when you log in, and restarts if it stops:
 
    ```sh
-   desktop/.venv/bin/python desktop/bentobox.py run
+   tools/bentobox start
    ```
 
 4. **Pair each board.** On the board, open **Settings › Connectivity › Pair a new Mac**. The board shows a 6-digit code for two minutes: type it into the dialog that macOS opens. Then trust the board on the Mac:
@@ -82,7 +82,7 @@ Then set up the Mac app. Run these from the repo root. You need Python 3.10 or n
 
    A real code only ever appears on the board's screen. The pictures show the simulator's sample code.
 
-5. **Keep it running, if you like.** Bentobox can start when you log in, and hooks can tell it about your agents the moment something happens. Both change your setup, so read [Run it in the background](../desktop/README.md#run-it-in-the-background) first.
+5. **Add the hooks, if you like.** They tell Bentobox about your agents the moment something happens. They change your agents' settings, so read [Run it in the background](../desktop/README.md#run-it-in-the-background) first.
 
 ## Getting around
 
@@ -275,7 +275,7 @@ Brightness and the other settings, the agent on screen, the menus and the lock s
 
 ## The Mac app, day to day
 
-Use `desktop/.venv/bin/python desktop/bentobox.py` followed by:
+`tools/bentobox start`, `stop`, `restart`, `status` and `logs` look after the app, and `tools/bentobox check` says what's set up. For the rest, use `desktop/.venv/bin/python desktop/bentobox.py` followed by:
 
 | Command | What it does |
 |---|---|
@@ -287,7 +287,7 @@ Use `desktop/.venv/bin/python desktop/bentobox.py` followed by:
 | `boards` | The boards this Mac trusts, and new ones waiting |
 | `boards trust [UID]` or `boards forget UID` | Trusts a board, or forgets one |
 
-If launchd runs the app, its log is in `~/Library/Logs/bentobox.log`.
+In the background, its log is in `~/Library/Logs/bentobox.log`: `tools/bentobox logs` shows it.
 
 **What stays private:**
 

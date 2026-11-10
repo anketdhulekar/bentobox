@@ -217,8 +217,8 @@ def setup(dry_run=False):
     subprocess.run([VENV_PYTHON, "-m", "pip", "install", "-q", "-r", REQUIREMENTS], check=True)
     print(f"Python environment: {VENV} (with {os.path.basename(REQUIREMENTS)})")
     build_app()
-    print("Next: bentobox.py init, then bentobox.py run in a Rex tab, or install.py launchd. The first time, choose Pair a new "
-          "Mac on the board, and type the code it shows into the macOS dialog.")
+    print("Next: bentobox.py init, then tools/bentobox start (or bentobox.py run in a terminal). The first time, choose Pair a "
+          "new Mac on the board, and type the code it shows into the macOS dialog. tools/bentobox check lists what's left.")
 
 
 PLIST_TEXT = """<?xml version="1.0" encoding="UTF-8"?>
